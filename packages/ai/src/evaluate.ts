@@ -71,6 +71,16 @@ export function evaluate(state: GameState, persp: Perspective): number {
   return values[persp.player]! - ((1 - leader) * mean + leader * Math.max(...others));
 }
 
+const decayTables = new Map<number, Float64Array>();
+
+/** `decay ** d` for every distance a target is still worth walking. */
+function decayTable(decay: number): Float64Array {
+  let table = decayTables.get(decay);
+  if (!table)
+    decayTables.set(decay, (table = Float64Array.from({ length: 40 }, (_, d) => decay ** d)));
+  return table;
+}
+
 /** Board tables for the evaluation, built once per board. */
 interface Tables {
   /** 0 path, 1 start, 2 castle, by node index. */
@@ -115,7 +125,7 @@ export function playerValues(state: GameState, persp: Perspective): number[] {
   const w = persp.weights;
   const players = state.config.players;
   const budget = state.config.rules.movePoints;
-  const decay = Array.from({ length: 40 }, (_, d) => w.decay ** d);
+  const decay = decayTable(w.decay);
 
   // Stacks per player (knights that can leave a node), who holds each node.
   const stackNode: number[][] = Array.from({ length: players }, () => []);
@@ -158,11 +168,12 @@ export function playerValues(state: GameState, persp: Perspective): number[] {
 
   const castleSwords = new Array<number>(players).fill(0);
   const riskSwords = new Array<number>(players).fill(0);
-  const targets: number[][] = Array.from({ length: players }, () => []);
+  const targets = Array.from({ length: players }, () => new Float64Array(castles.length));
   const closeness = new Array<number>(players);
-  const near: number[] = [];
+  // Knights per distance from an entrance, for one player.
+  const near = new Float64Array(decay.length);
 
-  for (const { id, swords, entrances } of castles) {
+  for (const [ci, { id, swords, entrances }] of castles.entries()) {
     const c = state.castles[id]!;
     const owner = c.owner;
     let need = 2 * swords;
@@ -194,23 +205,29 @@ export function playerValues(state: GameState, persp: Perspective): number[] {
         // they are strong enough; the farthest one needed sets the time.
         const nodes = stackNode[p]!;
         const free = stackFree[p]!;
-        near.length = 0;
+        let far = -1;
         for (let i = 0; i < nodes.length; i++) {
           const d = dist.at(nodes[i]!, entrance);
-          if (d < decay.length) near.push(d * 1024 + Math.min(free[i]!, 1023));
+          if (d >= near.length) continue;
+          near[d]! += free[i]!;
+          if (d > far) far = d;
         }
-        near.sort((a, b) => a - b);
         let force = 0;
-        for (const packed of near) {
-          force += packed % 1024;
+        for (let d = 0; d <= far; d++) {
+          if (near[d] === 0) continue;
+          force += near[d]!;
+          near[d] = 0;
           const f = Math.min(1, force / needHere);
-          const value = f * f * decay[Math.floor(packed / 1024)]!;
+          const value = f * f * decay[d]!;
           if (value > closeness[p]!) closeness[p] = value;
-          if (f === 1) break;
+          if (f === 1) {
+            near.fill(0, d + 1, far + 1);
+            break;
+          }
         }
       }
     }
-    for (let p = 0; p < players; p++) if (p !== owner) targets[p]!.push(swords * closeness[p]!);
+    for (let p = 0; p < players; p++) if (p !== owner) targets[p]![ci] = swords * closeness[p]!;
     if (owner !== null) riskSwords[owner]! += swords * risk;
   }
 
@@ -227,9 +244,9 @@ export function playerValues(state: GameState, persp: Perspective): number[] {
   }
 
   return Array.from({ length: players }, (_, p) => {
-    const sorted = targets[p]!.sort((a, b) => b - a);
+    const sorted = targets[p]!.sort();
     let potential = 0;
-    for (let k = 0, f = 1; k < sorted.length && sorted[k]! > 0.01; k++, f *= w.focus)
+    for (let k = sorted.length - 1, f = 1; k >= 0 && sorted[k]! > 0.01; k--, f *= w.focus)
       potential += f * sorted[k]!;
     return (
       w.sword * (castleSwords[p]! - w.castleRisk * riskSwords[p]!) +

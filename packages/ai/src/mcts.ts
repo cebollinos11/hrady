@@ -9,6 +9,8 @@ export interface SearchOptions {
   plans: number;
   /** Beam width of the heuristic search that proposes the plans. */
   beam: number;
+  /** Knights by which the proposed plans' end positions must differ. */
+  diversity: number;
   /** Simulations in total (a simulation plays one plan in one sampled world). */
   iterations: number;
   /** Time budget in milliseconds; the search stops at whichever limit comes first. */
@@ -26,6 +28,7 @@ export interface SearchOptions {
 export const DEFAULT_SEARCH: SearchOptions = {
   plans: 8,
   beam: 8,
+  diversity: 2,
   iterations: 400,
   timeMs: 2000,
   rounds: 1,
@@ -112,7 +115,11 @@ export function searchTurn(
 ): SearchResult {
   const start = options.now();
   const root = determinize(obs, random);
-  const plans = planTurns(root, persp, odds, { beam: options.beam, count: options.plans });
+  const plans = planTurns(root, persp, odds, {
+    beam: options.beam,
+    count: options.plans,
+    diversity: options.diversity,
+  });
   const stats = plans.map((plan) => ({ plan, mean: 0, visits: 0, sum: 0 }));
   const result = () => ({
     plan: [...stats].sort((a, b) => b.mean - a.mean)[0]!.plan,

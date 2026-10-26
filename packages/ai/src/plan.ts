@@ -34,9 +34,12 @@ const neutralCount = (state: GameState) =>
 
 /** Identity of a position: knights, castle owners, the pending shield and the MP left. */
 export function positionKey(state: GameState, withMp = true): string {
-  const ids = Object.keys(state.knights).sort();
   let key = `${state.turn}|${withMp ? state.mp : ''}|${state.pendingShield}|`;
-  for (const id of ids) key += `${id}:${state.knights[id]!.join(',')};`;
+  // Board order rather than sorting the occupied ids: same key, less work.
+  for (const id of boardContext(state.config).order) {
+    const counts = state.knights[id];
+    if (counts) key += `${id}:${counts.join(',')};`;
+  }
   for (const id in state.castles) key += `${state.castles[id]!.owner ?? '-'}`;
   return key;
 }
@@ -103,18 +106,19 @@ interface Node {
  * {@link evaluate}. Ending the turn is possible after every step, so every
  * position seen is a possible plan. A gamble on a face-down shield ends a plan:
  * its value is the expectation over the shield, and the bot plans again once
- * the shield is revealed. Returns up to `count` plans leading to different
- * positions, best first; the first is always at least as good as ending the
- * turn straight away, which is among them.
+ * the shield is revealed. Returns up to `count` plans, best first; the first
+ * is always at least as good as ending the turn straight away. Plans whose
+ * end positions differ by fewer than `diversity` knights from a better plan
+ * are left out, so the list offers real alternatives.
  */
 export function planTurns(
   state: GameState,
   persp: Perspective,
   odds: ShieldOdds,
-  options: PlanOptions & { count: number },
+  options: PlanOptions & { count: number; diversity?: number },
 ): Plan[] {
-  const plans: Plan[] = [{ actions: [], value: evaluate(state, persp) }];
-  if (state.phase !== 'move') return plans;
+  const plans: Candidate[] = [{ actions: [], value: evaluate(state, persp), state }];
+  if (state.phase !== 'move') return plans.map(({ actions, value }) => ({ actions, value }));
 
   let frontier: Node[] = [{ state, actions: [], value: plans[0]!.value }];
   // Positions already reached, with the most MP they were reached with.
@@ -126,7 +130,7 @@ export function planTurns(
         if (action.type === 'endTurn' || action.type === 'placeShield') continue;
         if (action.type === 'attackCastle' && isGamble(node.state, action)) {
           const value = gambleValue(node.state, action, persp, odds);
-          plans.push({ actions: [...node.actions, action], value });
+          plans.push({ actions: [...node.actions, action], value, state: null });
           continue;
         }
         const next = step(node.state, action);
@@ -138,13 +142,39 @@ export function planTurns(
           actions: [...node.actions, ...next.actions],
           value: evaluate(next.state, persp),
         };
-        plans.push({ actions: child.actions, value: child.value });
+        plans.push({ actions: child.actions, value: child.value, state: child.state });
         if (child.state.phase === 'move' && child.state.mp > 0) children.push(child);
       }
     }
     frontier = children.sort((a, b) => b.value - a.value).slice(0, options.beam);
   }
-  return plans.sort((a, b) => b.value - a.value).slice(0, options.count);
+  plans.sort((a, b) => b.value - a.value);
+  const chosen: Candidate[] = [];
+  const diversity = options.diversity ?? 0;
+  for (const plan of plans) {
+    if (chosen.length === options.count) break;
+    if (chosen.every((other) => knightsApart(plan.state, other.state) >= diversity))
+      chosen.push(plan);
+  }
+  return chosen.map(({ actions, value }) => ({ actions, value }));
+}
+
+/** A plan with the position it ends in; `null` after a gamble, whose outcome is open. */
+interface Candidate extends Plan {
+  state: GameState | null;
+}
+
+/** How many knights stand in different places in two positions (∞ if either is open). */
+function knightsApart(a: GameState | null, b: GameState | null): number {
+  if (!a || !b) return Infinity;
+  let diff = 0;
+  for (const id in a.knights) {
+    const x = a.knights[id]!;
+    const y = b.knights[id];
+    for (let p = 0; p < x.length; p++) diff += Math.abs(x[p]! - (y?.[p] ?? 0));
+  }
+  for (const id in b.knights) if (!a.knights[id]) for (const n of b.knights[id]!) diff += n;
+  return diff / 2;
 }
 
 /** The best plan of {@link planTurns}. */
