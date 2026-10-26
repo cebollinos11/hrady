@@ -1,0 +1,20 @@
+{
+  "name": "@hrady/ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "tournament": "tsx scripts/tournament.ts"
+  },
+  "dependencies": {
+    "@hrady/board": "workspace:*",
+    "@hrady/engine": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6"
+  }
+}
