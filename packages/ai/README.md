@@ -118,7 +118,7 @@ pnpm tournament --lineup mcts:iterations=150,heuristic,heuristic --games 100 --s
 Every lineup plays `--games` seeded games; seats rotate so each bot sits in
 every seat equally often. Games run on worker threads (`--workers`, default:
 all cores). A spec is `random`, `heuristic`, `mcts`, a level (`easy`, `medium`,
-`hard`) or a bot with options: `heuristic:beam=4`, `mcts:iterations=100,rounds=2`,
+`hard`) or a bot with options: `heuristic:beam=4`, `mcts:iterations=100+rounds=2` (options joined by `+`),
 `heuristic:w.potential=5` (an evaluation weight). The report gives wins (ties
 split), mean points, thinking time per decision and game lengths.
 

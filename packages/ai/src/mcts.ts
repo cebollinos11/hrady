@@ -21,6 +21,11 @@ export interface SearchOptions {
   rolloutBeam: number;
   /** Evaluation units per logistic step when turning a position into a reward. */
   scale: number;
+  /**
+   * Mean reward by which another plan must beat the heuristic's own choice to
+   * replace it. The heuristic's plan is never dropped by the halving.
+   */
+  margin: number;
   /** Clock for the time budget. */
   now: () => number;
 }
@@ -34,6 +39,7 @@ export const DEFAULT_SEARCH: SearchOptions = {
   rounds: 1,
   rolloutBeam: 1,
   scale: 20,
+  margin: 0,
   now: () => performance.now(),
 };
 
@@ -150,8 +156,11 @@ export function searchTurn(
     }
     alive.sort((a, b) => stats[b]!.mean - stats[a]!.mean);
     alive = alive.slice(0, Math.ceil(alive.length / 2));
+    if (!alive.includes(0)) alive.push(0);
     if (options.now() - start > options.timeMs) break;
   }
+  alive.sort((a, b) => stats[b]!.mean - stats[a]!.mean);
   const best = stats[alive[0]!]!;
-  return { ...result(), plan: best.plan };
+  const plan = best.mean > stats[0]!.mean + options.margin ? best.plan : stats[0]!.plan;
+  return { ...result(), plan };
 }
