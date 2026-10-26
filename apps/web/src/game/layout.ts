@@ -138,11 +138,57 @@ export function dotsBetween(a: Point, b: Point, ra: number, rb: number, spacing 
   });
 }
 
+/** Closest a connection that does not touch a start area may pass by its centre. */
+export const START_CLEARANCE = 0.62;
+
+/**
+ * Moves path markers so that no connection between two of them runs under a
+ * start scroll. On the board such paths pass just behind the scroll; here both
+ * markers are pushed away from the scroll (outwards, towards the board edge,
+ * when the path runs straight through it) until the path clears it. Markers
+ * stay `margin` inside the board.
+ */
+export function clearStarts(
+  board: Board,
+  nodes: Map<string, NodeLayout>,
+  bounds: { width: number; depth: number },
+  margin = MARKER_RADIUS + 0.12,
+) {
+  const hx = bounds.width / 2 - margin;
+  const hz = bounds.depth / 2 - margin;
+  for (const start of board.starts) {
+    const s = nodes.get(start.id)!.pos;
+    for (const [a, b] of board.data.edges) {
+      const na = nodes.get(a)!;
+      const nb = nodes.get(b)!;
+      if (na.node.type !== 'path' || nb.node.type !== 'path') continue;
+      const { d, t } = segmentDistance(s, na.pos, nb.pos);
+      if (d >= START_CLEARANCE) continue;
+      const cx = na.pos.x + (nb.pos.x - na.pos.x) * t;
+      const cz = na.pos.z + (nb.pos.z - na.pos.z) * t;
+      // Away from the scroll; straight outwards if the path runs through its centre.
+      let dx = cx - s.x;
+      let dz = cz - s.z;
+      if (Math.hypot(dx, dz) < 1e-6) [dx, dz] = [Math.sign(s.x) || 1, 0];
+      const len = Math.hypot(dx, dz);
+      const push = START_CLEARANCE - d;
+      for (const n of [na, nb])
+        n.pos = {
+          x: Math.max(-hx, Math.min(hx, n.pos.x + (dx / len) * push)),
+          z: Math.max(-hz, Math.min(hz, n.pos.z + (dz / len) * push)),
+        };
+    }
+  }
+}
+
 export function buildLayout(board: Board): Layout {
   const size = graphSize(board);
+  const width = size.width + 2 * MARGIN;
+  const depth = size.depth + 2 * MARGIN;
   const nodes = new Map<string, NodeLayout>();
   for (const node of board.data.nodes)
     nodes.set(node.id, { id: node.id, node, pos: toWorld(size, node.x, node.y), facing: 0 });
+  clearStarts(board, nodes, { width, depth });
 
   const edges: DottedEdge[] = [];
   const entrances: Entrance[] = [];
@@ -181,8 +227,8 @@ export function buildLayout(board: Board): Layout {
   }
 
   return {
-    width: size.width + 2 * MARGIN,
-    depth: size.depth + 2 * MARGIN,
+    width,
+    depth,
     graph: size,
     nodes,
     edges,

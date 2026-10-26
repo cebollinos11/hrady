@@ -2,6 +2,7 @@ import { loadHradyBoard, parseBoard } from '@hrady/board';
 import { describe, expect, it } from 'vitest';
 import { testBoardData } from '../../../packages/engine/test/fixtures';
 import {
+  START_CLEARANCE,
   WATER_Y,
   buildLayout,
   clampToBoard,
@@ -10,6 +11,7 @@ import {
   fitDistance,
   nodeRadius,
   riverDistance,
+  segmentDistance,
   toWorld,
 } from '../src/game/layout';
 import { heightAt } from '../src/game/terrain';
@@ -28,6 +30,18 @@ describe.each(boards)('layout of the %s board', (_, board) => {
       const r = nodeRadius(n.node);
       expect(Math.abs(n.pos.x) + r).toBeLessThan(layout.width / 2);
       expect(Math.abs(n.pos.z) + r).toBeLessThan(layout.depth / 2);
+    }
+  });
+
+  it('keeps paths between markers clear of the start areas', () => {
+    for (const start of board.starts) {
+      const s = layout.nodes.get(start.id)!.pos;
+      for (const [a, b] of board.data.edges) {
+        const pa = layout.nodes.get(a)!;
+        const pb = layout.nodes.get(b)!;
+        if (pa.node.type !== 'path' || pb.node.type !== 'path') continue;
+        expect(segmentDistance(s, pa.pos, pb.pos).d).toBeGreaterThan(START_CLEARANCE - 1e-6);
+      }
     }
   });
 
