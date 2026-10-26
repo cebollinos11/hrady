@@ -24,6 +24,11 @@ body {
   pointer-events: none;
 }
 
+.hud a {
+  color: #f4ecd8;
+  pointer-events: auto;
+}
+
 .hud h1 {
   margin: 0 0 4px;
   font-size: 20px;

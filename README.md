@@ -32,6 +32,9 @@ pnpm tournament --lineup heuristic,random,random --games 100  # bot-vs-bot (pack
 | `apps/server`      | Cloudflare Worker + SQLite-backed Durable Object         |
 | `tools/map-editor` | click-to-trace editor over the board photo (not shipped) |
 
+Every push to `main` builds `apps/web` and publishes it on GitHub Pages
+(`.github/workflows/pages.yml`); the 2D client with bots is at `debug.html`.
+
 The server echoes WebSocket messages at `/ws/<room>` for now. Deploy with
 `pnpm --filter @hrady/server deploy` after `npx wrangler login`.
 

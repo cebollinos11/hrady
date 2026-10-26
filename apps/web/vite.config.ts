@@ -2,6 +2,8 @@ import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // GitHub Pages serves the site under /<repo>/; the Pages workflow sets this.
+  base: process.env.BASE_PATH ?? '/',
   // The debug client loads the board photo from docs/ as a dev-only underlay;
   // production builds never include it.
   server: { fs: { allow: ['../..'] } },
