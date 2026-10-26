@@ -28,8 +28,9 @@ castle and every start adjacent to at least one path marker.
 ## Tracing notes (first draft, 2026-10-26)
 
 Traced by hand from the photo: 61 path markers, 6 starts, 18 castles, 91
-dotted connections and 18 castle-access edges. Every start scroll has exactly
-four dotted lines, which is a useful sanity check.
+dotted connections and 18 castle-access edges (19 after the owner's
+correction below). Every start scroll has exactly four dotted lines, which is
+a useful sanity check.
 
 **Castle access.** The small white arrowheads printed next to the paths each
 sit between one marker and one castle and point at the castle, so they are
@@ -39,7 +40,7 @@ arrow I could find and got the nearest marker instead:
 
 | Castle   | Access marker | Confidence                                       |
 | -------- | ------------- | ------------------------------------------------ |
-| Kánovice | `p40`         | guess: river marker directly below the island    |
+| Kánovice | `p40`, `p37`  | `p40` a guess; `p37` confirmed by the owner      |
 | Olivín   | `p46`         | guess: closest marker; `p46` also enters Chotice |
 | Kumburk  | `p48`         | guess: directly below; `p42` above is Prachov's  |
 
