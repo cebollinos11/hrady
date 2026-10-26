@@ -197,6 +197,9 @@ end-game summary, save/resume local games, game replays.
   scores the last neutral castle.
 - A player who has used all 6 shields places none.
 - The castle attack MP also moves the entering knight(s) in.
+- Further engine interpretations (castle attack legality with a face-down
+  shield, shield timing, tiebreak details, …) are listed in
+  [`packages/engine/README.md`](../packages/engine/README.md#rule-interpretations).
 - Board details to resolve in Stage 1: the small white arrowheads printed
   next to some paths (one-way? castle entry?) and which marker(s) give access
   to each castle.

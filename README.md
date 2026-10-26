@@ -25,6 +25,7 @@ pnpm dev:map-editor  # board tracing tool (tools/map-editor)
 | Path               | What                                                     |
 | ------------------ | -------------------------------------------------------- |
 | `packages/board`   | board graph (`hrady.json`), types, loader, validation    |
+| `packages/engine`  | pure, deterministic rules engine                         |
 | `apps/web`         | Vite + three.js client                                   |
 | `apps/server`      | Cloudflare Worker + SQLite-backed Durable Object         |
 | `tools/map-editor` | click-to-trace editor over the board photo (not shipped) |
