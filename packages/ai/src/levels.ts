@@ -27,6 +27,6 @@ export function createBot(level: Level, seed: number, options: LevelOptions = {}
     case 'medium':
       return heuristicBot(seed);
     case 'hard':
-      return mctsBot(seed, { timeMs: options.timeMs ?? 1500 });
+      return mctsBot(seed, options.timeMs === undefined ? {} : { timeMs: options.timeMs });
   }
 }

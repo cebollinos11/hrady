@@ -39,7 +39,7 @@ the real engine. It exists to check the rules and the traced graph before the
   themselves after the delay chosen under _Bots_ (Fast/Normal/Slow), or one
   action at a time with _Step_ (<kbd>N</kbd>). They run in a Web Worker
   (`bot.worker.ts`) so the page stays responsive while the hard bot thinks
-  (about 1.5 s per turn plan), and each bot only gets `viewFor` its seat plus
+  (up to 3 s per turn plan), and each bot only gets `viewFor` its seat plus
   the shields removed so far (public, from the log). Clicks and keys are
   ignored on a bot's turn; seats can be switched at any time, also mid-game.
 - **Whose view.** The board shows the player to move if they are human,

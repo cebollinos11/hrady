@@ -90,15 +90,16 @@ and keeps it as long as the position is the one it expects (`PlanFollower`).
 
 ## Monte-Carlo search (hard)
 
-`searchTurn` takes the heuristic's best plans for the turn (8, whose end
-positions differ by at least two knights) and plays each out in sampled
+`searchTurn` takes the heuristic's best 8 plans for the turn and plays each
+out in sampled
 worlds: a determinization of the hidden shields with fresh dice, the plan
-itself (a gamble resolves against the sampled shield), then one round of
-every opponent's turn played by the heuristic planner (beam 1). The position
-when the bot is to move again is evaluated and squashed to a reward in
+itself (a gamble resolves against the sampled shield), then two rounds of
+turns (the opponents', the bot's own next turn, the opponents' again) played
+by the heuristic planner (beam 1). The position when the bot is to move
+again is evaluated and squashed to a reward in
 `[0, 1]`. All plans are played in the same worlds (common random numbers) and
-narrowed down by sequential halving. The search stops at an iteration budget
-or a time budget (1.5 s per turn plan at the Hard level); time per decision
+narrowed down by sequential halving; the heuristic's own plan is never
+dropped. The search stops at 150 simulations or after 3 s; time per decision
 in the tournament below is with an iteration budget so results only depend on
 seeds.
 
@@ -112,7 +113,7 @@ samples a world consistent with what the bot knows.
 
 ```sh
 pnpm tournament --lineup heuristic,random,random --games 100
-pnpm tournament --lineup mcts:iterations=150,heuristic,heuristic --games 100 --seed 1001
+pnpm tournament --lineup mcts,heuristic,heuristic --games 100 --seed 2001
 ```
 
 Every lineup plays `--games` seeded games; seats rotate so each bot sits in
