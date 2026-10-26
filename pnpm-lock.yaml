@@ -63,6 +63,16 @@ importers:
 
   packages/board: {}
 
+  tools/map-editor:
+    dependencies:
+      '@hrady/board':
+        specifier: workspace:*
+        version: link:../../packages/board
+    devDependencies:
+      vite:
+        specifier: ^8.3.5
+        version: 8.3.5(@types/node@22.20.5)(esbuild@0.28.2)
+
 packages:
 
   '@cacheable/memory@2.2.0':

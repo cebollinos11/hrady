@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hrady map editor</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="tools" role="radiogroup" aria-label="Tool">
+        <button data-tool="select" title="Select and drag nodes (V)">Select <kbd>V</kbd></button>
+        <button data-tool="path" title="Click to add a path marker (P)">Path <kbd>P</kbd></button>
+        <button data-tool="start" title="Click to add a start scroll (S)">
+          Start <kbd>S</kbd>
+        </button>
+        <button data-tool="castle" title="Click to add a castle (C)">Castle <kbd>C</kbd></button>
+        <button data-tool="connect" title="Click two nodes to connect or disconnect them (E)">
+          Connect <kbd>E</kbd>
+        </button>
+        <button data-tool="delete" title="Click a node or edge to delete it (D)">
+          Delete <kbd>D</kbd>
+        </button>
+      </div>
+      <label>Zoom <input id="zoom" type="range" min="0.5" max="3" step="0.1" value="1" /></label>
+      <label>Photo <input id="opacity" type="range" min="0" max="1" step="0.05" value="1" /></label>
+      <label><input id="labels" type="checkbox" checked /> Labels</label>
+      <span class="spacer"></span>
+      <button id="undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="reset" title="Discard the draft and reload packages/board/hrady.json">
+        Reload hrady.json
+      </button>
+      <label class="button">Import… <input id="import" type="file" accept=".json" hidden /></label>
+      <button id="export">Export</button>
+    </header>
+    <main>
+      <div id="viewport" class="viewport"><svg id="board"></svg></div>
+      <aside class="panel">
+        <section id="selection"></section>
+        <section>
+          <h2>Stats</h2>
+          <p id="stats"></p>
+        </section>
+        <section>
+          <h2>Validation</h2>
+          <ul id="problems"></ul>
+        </section>
+        <section class="help">
+          <h2>Help</h2>
+          <p>
+            Coordinates are stored normalised (0..1) over the photo. The draft autosaves in this
+            browser; <b>Export</b> writes <code>hrady.json</code> to copy into
+            <code>packages/board/</code>.
+          </p>
+          <p>
+            <kbd>Del</kbd> deletes the selection, <kbd>Esc</kbd> clears it. In Connect mode, click
+            an edge to remove it.
+          </p>
+        </section>
+      </aside>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

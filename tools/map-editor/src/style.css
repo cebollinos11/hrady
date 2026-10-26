@@ -1,0 +1,198 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font:
+    13px system-ui,
+    sans-serif;
+  color: #222;
+  background: #e9e5dc;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #2d3a2e;
+  color: #f4ecd8;
+}
+
+.tools {
+  display: flex;
+  gap: 4px;
+}
+
+button,
+.button {
+  padding: 4px 10px;
+  border: 1px solid #8a8a7a;
+  border-radius: 4px;
+  background: #f4ecd8;
+  color: #222;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tools button[aria-checked='true'] {
+  background: #e0b43c;
+  border-color: #a07a10;
+  font-weight: 600;
+}
+
+kbd {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.spacer {
+  flex: 1;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.viewport {
+  flex: 1;
+  overflow: auto;
+  background: #444;
+}
+
+#board {
+  display: block;
+  user-select: none;
+}
+
+.panel {
+  width: 300px;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+  border-left: 1px solid #bbb;
+  background: #f7f4ee;
+}
+
+.panel h2 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #666;
+}
+
+.panel label {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.panel input,
+.panel select {
+  font: inherit;
+  padding: 2px 4px;
+}
+
+#problems {
+  margin: 0;
+  padding-left: 18px;
+}
+
+#problems li {
+  color: #a02020;
+  margin-bottom: 4px;
+}
+
+#problems li.ok {
+  color: #207020;
+  list-style: none;
+  margin-left: -18px;
+}
+
+.help p {
+  color: #555;
+}
+
+/* Board overlay */
+.edge {
+  stroke: #ff2d55;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.edge.access {
+  stroke: #c040ff;
+  stroke-dasharray: 6 4;
+}
+
+.edge-hit {
+  stroke: transparent;
+  stroke-width: 12;
+}
+
+.mode-connect .edge-hit:hover,
+.mode-delete .edge-hit:hover {
+  stroke: rgb(255 255 0 / 60%);
+  cursor: pointer;
+}
+
+.node {
+  stroke: #000;
+  stroke-width: 1.5;
+  cursor: pointer;
+}
+
+.node.path {
+  fill: #ffcc00;
+}
+
+.node.start {
+  fill: #3a7bff;
+}
+
+.node.castle {
+  fill: #c040ff;
+}
+
+.node.selected {
+  stroke: #fff;
+  stroke-width: 4;
+}
+
+.node.pending {
+  stroke: #00e0ff;
+  stroke-width: 4;
+}
+
+.label {
+  font:
+    bold 13px system-ui,
+    sans-serif;
+  fill: #fff;
+  stroke: #000;
+  stroke-width: 3;
+  paint-order: stroke;
+  pointer-events: none;
+}
+
+.hide-labels .label {
+  display: none;
+}
+
+.mode-path svg,
+.mode-start svg,
+.mode-castle svg {
+  cursor: crosshair;
+}

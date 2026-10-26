@@ -1,0 +1,17 @@
+{
+  "name": "@hrady/map-editor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@hrady/board": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5"
+  }
+}
