@@ -87,7 +87,8 @@ them here and in the tests together.
   quickly (it is a product over the directions); the Stage 4 AI will want its
   own candidate generator and can use `validateAction` to check it.
 - Undo within a turn is not built in; replaying the log up to the last
-  irreversible action (any battle, roll or shield) gives the same result.
+  irreversible action (any battle, roll or shield) gives the same result. The
+  debug client (`apps/web/src/debug/session.ts`) does exactly that.
 
 ## Tests
 

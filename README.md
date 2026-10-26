@@ -17,7 +17,7 @@ pnpm lint          # ESLint + Prettier check
 pnpm typecheck     # tsc in every package
 pnpm test          # Vitest
 
-pnpm dev:web         # three.js client (apps/web)
+pnpm dev:web         # three.js client (apps/web); /debug.html is the 2D hotseat client
 pnpm dev:server      # Worker + Durable Object via wrangler dev (apps/server)
 pnpm dev:map-editor  # board tracing tool (tools/map-editor)
 ```
@@ -26,7 +26,7 @@ pnpm dev:map-editor  # board tracing tool (tools/map-editor)
 | ------------------ | -------------------------------------------------------- |
 | `packages/board`   | board graph (`hrady.json`), types, loader, validation    |
 | `packages/engine`  | pure, deterministic rules engine                         |
-| `apps/web`         | Vite + three.js client                                   |
+| `apps/web`         | Vite + three.js client, 2D debug client (`debug.html`)   |
 | `apps/server`      | Cloudflare Worker + SQLite-backed Durable Object         |
 | `tools/map-editor` | click-to-trace editor over the board photo (not shipped) |
 
