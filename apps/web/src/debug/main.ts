@@ -9,7 +9,8 @@ import {
   type PlayerId,
 } from '@hrady/engine';
 import type { BotRequest, BotResponse } from '../shared/bot.worker';
-import { NO_MARKS, drawBoard, type Marks } from './board';
+import { drawBoard } from './board';
+import { NO_MARKS, marksFor } from '../shared/marks';
 import { PLAYER_COLOURS, describeEvent, nodeName, playerName } from '../shared/describe';
 import {
   NONE,
@@ -18,8 +19,6 @@ import {
   optionsFor,
   setContribution,
   setCount,
-  targetsFor,
-  type Options,
   type Selection,
 } from '../shared/selection';
 import {
@@ -150,27 +149,6 @@ function onNodeClick(id: string) {
 }
 
 // --- Rendering -------------------------------------------------------------
-
-function marksFor(sel: Selection, opts: Options): Marks {
-  const marks: Marks = {
-    ...NO_MARKS,
-    selectable: new Set(opts.movable.keys()),
-    fields: new Set(opts.fields.keys()),
-    shield: opts.shield,
-  };
-  if (sel.kind === 'stack') {
-    const targets = targetsFor(opts, sel.from);
-    return { ...marks, selected: sel.from, ...targets };
-  }
-  if (sel.kind === 'attack')
-    return {
-      ...marks,
-      fields: new Set(),
-      target: sel.target,
-      sources: new Map(Object.entries(sel.contributions)),
-    };
-  return marks;
-}
 
 function h<K extends keyof HTMLElementTagNameMap>(
   tag: K,

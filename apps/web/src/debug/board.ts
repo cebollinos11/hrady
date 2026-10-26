@@ -1,36 +1,11 @@
 import type { Board, BoardNode } from '@hrady/board';
 import type { GameView } from '@hrady/engine';
 import { PLAYER_COLOURS } from '../shared/describe';
+import type { Marks } from '../shared/marks';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** Fallback drawing size when the board has no reference image. */
 const DEFAULT_SIZE = { width: 876, height: 1200 };
-
-/** How each node is highlighted for the current selection. */
-export interface Marks {
-  /** Own stacks that can do something. */
-  selectable: ReadonlySet<string>;
-  selected: string | null;
-  moves: ReadonlySet<string>;
-  castles: ReadonlySet<string>;
-  fields: ReadonlySet<string>;
-  /** Field attack being built: its target and every possible source with its count. */
-  target: string | null;
-  sources: ReadonlyMap<string, number>;
-  /** Castle that may get a shield now. */
-  shield: string | null;
-}
-
-export const NO_MARKS: Marks = {
-  selectable: new Set(),
-  selected: null,
-  moves: new Set(),
-  castles: new Set(),
-  fields: new Set(),
-  target: null,
-  sources: new Map(),
-  shield: null,
-};
 
 export interface DrawOptions {
   labels: boolean;
