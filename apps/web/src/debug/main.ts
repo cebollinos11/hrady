@@ -8,9 +8,10 @@ import {
   type GameView,
   type PlayerId,
 } from '@hrady/engine';
-import type { BotRequest, BotResponse } from './bot.worker';
-import { NO_MARKS, drawBoard, type Marks } from './board';
-import { PLAYER_COLOURS, describeEvent, nodeName, playerName } from './describe';
+import type { BotRequest, BotResponse } from '../shared/bot.worker';
+import { drawBoard } from './board';
+import { NO_MARKS, marksFor } from '../shared/marks';
+import { PLAYER_COLOURS, describeEvent, nodeName, playerName } from '../shared/describe';
 import {
   NONE,
   attackAction,
@@ -18,10 +19,8 @@ import {
   optionsFor,
   setContribution,
   setCount,
-  targetsFor,
-  type Options,
   type Selection,
-} from './selection';
+} from '../shared/selection';
 import {
   SEAT_CHOICES,
   SEAT_NAMES,
@@ -30,7 +29,7 @@ import {
   seatsFor,
   viewerFor,
   type Seat,
-} from './seats';
+} from '../shared/seats';
 import {
   act,
   canUndo,
@@ -42,7 +41,7 @@ import {
   undo,
   undoTurn,
   type Session,
-} from './session';
+} from '../shared/session';
 
 const STORAGE_KEY = 'hrady-debug-game';
 const SEATS_KEY = 'hrady-debug-seats';
@@ -150,27 +149,6 @@ function onNodeClick(id: string) {
 }
 
 // --- Rendering -------------------------------------------------------------
-
-function marksFor(sel: Selection, opts: Options): Marks {
-  const marks: Marks = {
-    ...NO_MARKS,
-    selectable: new Set(opts.movable.keys()),
-    fields: new Set(opts.fields.keys()),
-    shield: opts.shield,
-  };
-  if (sel.kind === 'stack') {
-    const targets = targetsFor(opts, sel.from);
-    return { ...marks, selected: sel.from, ...targets };
-  }
-  if (sel.kind === 'attack')
-    return {
-      ...marks,
-      fields: new Set(),
-      target: sel.target,
-      sources: new Map(Object.entries(sel.contributions)),
-    };
-  return marks;
-}
 
 function h<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -547,7 +525,7 @@ function scheduleBot() {
 }
 
 function startWorker(): Worker {
-  const w = new Worker(new URL('./bot.worker.ts', import.meta.url), { type: 'module' });
+  const w = new Worker(new URL('../shared/bot.worker.ts', import.meta.url), { type: 'module' });
   w.onmessage = (e: MessageEvent<BotResponse>) => onBotResponse(e.data);
   w.onerror = (e) => {
     pending = null;

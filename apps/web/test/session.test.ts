@@ -12,7 +12,7 @@ import {
   undoFloor,
   undoTurn,
   type Session,
-} from '../src/debug/session';
+} from '../src/shared/session';
 
 const board = testBoardData();
 
