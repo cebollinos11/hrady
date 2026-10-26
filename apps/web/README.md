@@ -92,6 +92,10 @@ running animations; ⚙ _Animations_ makes them faster or turns them off.
 
 ### Design decisions
 
+- **Board proportions.** The graph is laid out 1.35× wider than the photo's
+  aspect ratio (`WIDEN` in `layout.ts`), giving the river and the paths more
+  room, inside a margin (`MARGIN`) so pieces and paths near the edge stay on
+  the board. Only the 3D layout changes; the graph and the rules don't.
 - **River course.** The graph has no river, so `RHINE` is a hand-made
   centreline (normalised coordinates, independent of node ids). Nodes that
   fall into it become islets; connections over water are dotted on the

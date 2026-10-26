@@ -2,14 +2,20 @@ import type { Board, BoardNode } from '@hrady/board';
 
 /**
  * Where everything sits on the 3D board, computed from the board graph only.
- * World units: the board is `depth` = 12 units from top (-z) to bottom (+z)
- * and as wide as the graph's aspect ratio says; y is up. Nothing here depends
- * on node ids or on the exact shape of the traced graph.
+ * World units: the graph is spread over `graph.depth` = 12 units from top (-z)
+ * to bottom (+z) and `WIDEN` times as wide as its aspect ratio says, which
+ * leaves more room between the nodes and for the river; the board adds a
+ * `MARGIN` all round so pieces and paths near the edge stay on it. y is up.
+ * Nothing here depends on node ids or on the exact shape of the traced graph.
  */
 
 /** Board size in graph units when the graph has no reference size. */
 const DEFAULT_SIZE = { width: 876, height: 1200 };
 export const BOARD_DEPTH = 12;
+/** How much wider than the photo's aspect ratio the graph is laid out. */
+export const WIDEN = 1.35;
+/** Free border between the graph's extent and the board edge. */
+export const MARGIN = 0.55;
 
 /** Radius of a path marker, and of the area kept flat around each node. */
 export const MARKER_RADIUS = 0.27;
@@ -46,8 +52,11 @@ export interface Entrance {
 }
 
 export interface Layout {
+  /** Board size, margins included. */
   width: number;
   depth: number;
+  /** Area the normalised graph coordinates are mapped onto (see `toWorld`). */
+  graph: { width: number; depth: number };
   nodes: Map<string, NodeLayout>;
   /** Dotted connections between path markers and start areas. */
   edges: DottedEdge[];
@@ -69,27 +78,28 @@ export interface RiverPoint {
 }
 
 export const RHINE: readonly RiverPoint[] = [
-  { x: 0.43, y: -0.05, half: 0.07 },
-  { x: 0.45, y: 0.08, half: 0.07 },
-  { x: 0.44, y: 0.17, half: 0.065 },
-  { x: 0.46, y: 0.25, half: 0.065 },
-  { x: 0.46, y: 0.33, half: 0.065 },
-  { x: 0.47, y: 0.42, half: 0.07 },
-  { x: 0.5, y: 0.5, half: 0.065 },
+  { x: 0.43, y: -0.05, half: 0.078 },
+  { x: 0.45, y: 0.08, half: 0.078 },
+  { x: 0.44, y: 0.17, half: 0.078 },
+  { x: 0.46, y: 0.25, half: 0.078 },
+  { x: 0.46, y: 0.33, half: 0.078 },
+  { x: 0.47, y: 0.42, half: 0.078 },
+  { x: 0.5, y: 0.5, half: 0.075 },
   { x: 0.53, y: 0.58, half: 0.08 },
   { x: 0.55, y: 0.67, half: 0.08 },
-  { x: 0.59, y: 0.75, half: 0.06 },
+  { x: 0.59, y: 0.75, half: 0.07 },
   { x: 0.6, y: 0.83, half: 0.085 },
   { x: 0.55, y: 0.92, half: 0.12 },
   { x: 0.55, y: 1.05, half: 0.17 },
 ];
 
-export function boardSize(board: Board) {
+/** Area the graph is mapped onto, in world units. */
+export function graphSize(board: Board) {
   const { width, height } = board.data.image ?? DEFAULT_SIZE;
-  return { width: (width / height) * BOARD_DEPTH, depth: BOARD_DEPTH };
+  return { width: (width / height) * BOARD_DEPTH * WIDEN, depth: BOARD_DEPTH };
 }
 
-/** Maps normalised graph coordinates (0..1) onto the board, centred on the origin. */
+/** Maps normalised graph coordinates (0..1) onto the graph area, centred on the origin. */
 export function toWorld(size: { width: number; depth: number }, x: number, y: number): Point {
   return { x: (x - 0.5) * size.width, z: (y - 0.5) * size.depth };
 }
@@ -129,7 +139,7 @@ export function dotsBetween(a: Point, b: Point, ra: number, rb: number, spacing 
 }
 
 export function buildLayout(board: Board): Layout {
-  const size = boardSize(board);
+  const size = graphSize(board);
   const nodes = new Map<string, NodeLayout>();
   for (const node of board.data.nodes)
     nodes.set(node.id, { id: node.id, node, pos: toWorld(size, node.x, node.y), facing: 0 });
@@ -170,7 +180,15 @@ export function buildLayout(board: Board): Layout {
     layout.facing = sx || sz ? Math.atan2(sx, sz) : 0;
   }
 
-  return { ...size, nodes, edges, entrances, river: [...RHINE] };
+  return {
+    width: size.width + 2 * MARGIN,
+    depth: size.depth + 2 * MARGIN,
+    graph: size,
+    nodes,
+    edges,
+    entrances,
+    river: [...RHINE],
+  };
 }
 
 /**
@@ -180,14 +198,14 @@ export function buildLayout(board: Board): Layout {
  */
 export function riverDistance(layout: Layout, p: Point): number {
   let best = Infinity;
-  const size = { width: layout.width, depth: layout.depth };
+  const size = layout.graph;
   for (let i = 1; i < layout.river.length; i++) {
     const ra = layout.river[i - 1]!;
     const rb = layout.river[i]!;
     const a = toWorld(size, ra.x, ra.y);
     const b = toWorld(size, rb.x, rb.y);
     const { d, t } = segmentDistance(p, a, b);
-    const half = (ra.half + (rb.half - ra.half) * t) * layout.width;
+    const half = (ra.half + (rb.half - ra.half) * t) * size.width;
     best = Math.min(best, d - half);
   }
   return best;

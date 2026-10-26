@@ -22,12 +22,21 @@ const boards = [
 describe.each(boards)('layout of the %s board', (_, board) => {
   const layout = buildLayout(board);
 
-  it('places every node on the board', () => {
+  it('places every node on the board, clear of its edge', () => {
     expect(layout.nodes.size).toBe(board.data.nodes.length);
     for (const n of layout.nodes.values()) {
-      expect(Math.abs(n.pos.x)).toBeLessThanOrEqual(layout.width / 2);
-      expect(Math.abs(n.pos.z)).toBeLessThanOrEqual(layout.depth / 2);
+      const r = nodeRadius(n.node);
+      expect(Math.abs(n.pos.x) + r).toBeLessThan(layout.width / 2);
+      expect(Math.abs(n.pos.z) + r).toBeLessThan(layout.depth / 2);
     }
+  });
+
+  it('keeps every dotted path on the board', () => {
+    for (const e of layout.edges)
+      for (const d of e.dots) {
+        expect(Math.abs(d.x)).toBeLessThan(layout.width / 2 - 0.1);
+        expect(Math.abs(d.z)).toBeLessThan(layout.depth / 2 - 0.1);
+      }
   });
 
   it('dots every connection but castle entrances, which get an arrow', () => {
@@ -72,7 +81,7 @@ describe('river and terrain', () => {
   const layout = buildLayout(loadHradyBoard());
 
   it('runs down the board from top to bottom', () => {
-    const size = { width: layout.width, depth: layout.depth };
+    const size = layout.graph;
     for (const p of layout.river) {
       const centre = toWorld(size, p.x, Math.min(1, Math.max(0, p.y)));
       expect(riverDistance(layout, centre)).toBeLessThan(0);
@@ -81,11 +90,11 @@ describe('river and terrain', () => {
   });
 
   it('dips under the water away from the nodes', () => {
-    const size = { width: layout.width, depth: layout.depth };
+    const size = layout.graph;
     // Somewhere in the river that is clear of every node.
     const wet = layout.river
       .map((p) => toWorld(size, p.x, p.y))
-      .filter((p) => Math.abs(p.z) < layout.depth / 2)
+      .filter((p) => Math.abs(p.z) < layout.graph.depth / 2)
       .find((p) =>
         [...layout.nodes.values()].every((n) => distance(n.pos, p) - nodeRadius(n.node) > 0.4),
       );

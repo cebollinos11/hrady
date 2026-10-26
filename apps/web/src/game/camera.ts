@@ -103,7 +103,7 @@ export class CameraRig {
       // Seen at an angle the board's depth shrinks; fit its width and most of its depth.
       return {
         target: new THREE.Vector3(0, 0, depth * 0.06),
-        radius: fitDistance(width * 1.05, depth * 0.72, FOV, this.camera.aspect),
+        radius: fitDistance(width * 1.18, depth * 0.78, FOV, this.camera.aspect),
         polar,
         azimuth: 0,
       };
