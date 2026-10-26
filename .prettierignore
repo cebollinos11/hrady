@@ -1,0 +1,6 @@
+pnpm-lock.yaml
+dist
+.wrangler
+docs
+# Written by formatBoardJson (one node/edge per line)
+packages/board/hrady.json
