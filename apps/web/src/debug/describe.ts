@@ -36,13 +36,13 @@ export function describeEvent(board: Board, e: GameEvent): string {
     case 'castleAttacked': {
       const defence =
         e.defender === null
-          ? `neutral, ${e.garrison} swords`
+          ? `neutral, ${e.garrison} sword${e.garrison === 1 ? '' : 's'}`
           : `${playerName(e.defender)}, ${knights(e.garrison)}`;
       const shield = e.shield === null ? '' : `, shield ${e.shield}`;
       return `${who} attacks ${at(e.castle)} (${defence}${shield}) with ${e.attackers} from ${at(e.from)}: ${e.won ? 'won' : 'lost'}`;
     }
     case 'castleConquered':
-      return `${who} takes ${at(e.castle)}, ${knights(e.count)} move in`;
+      return `${who} takes ${at(e.castle)}, ${knights(e.count)} move${e.count === 1 ? 's' : ''} in`;
     case 'shieldPlaced':
       return `${who} places a shield on ${at(e.castle)}`;
     case 'turnEnded':

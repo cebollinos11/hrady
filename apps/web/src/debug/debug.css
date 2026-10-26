@@ -1,0 +1,416 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  color: #222;
+  background: #f3efe6;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  background: #2b2a26;
+  color: #f4ecd8;
+}
+
+.toolbar a {
+  color: #f4ecd8;
+}
+
+.toolbar input[type='number'] {
+  width: 7em;
+}
+
+.toolbar .sep {
+  width: 1px;
+  align-self: stretch;
+  background: #555;
+}
+
+.toolbar .spacer {
+  flex: 1;
+}
+
+button,
+label.button {
+  padding: 3px 10px;
+  border: 1px solid #888;
+  border-radius: 4px;
+  background: #fbf8f1;
+  color: #222;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.viewport {
+  flex: 1;
+  min-width: 0;
+  background: #6d8f58;
+}
+
+#board {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.panel {
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #c9c0ad;
+  background: #fbf8f1;
+  overflow: hidden;
+}
+
+.panel section {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2dccd;
+}
+
+.panel h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.panel p {
+  margin: 4px 0;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.row input[type='number'],
+.sources input {
+  width: 4em;
+}
+
+.hint {
+  color: #666;
+  font-size: 13px;
+}
+
+.hint.bad {
+  color: #b02a1e;
+}
+
+.offer {
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #fff3c4;
+}
+
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 1px solid #0006;
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+
+.turn {
+  font-size: 16px;
+}
+
+.pips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.die {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #555;
+  border-radius: 5px;
+  background: #fff;
+  font-weight: bold;
+}
+
+.pip {
+  width: 12px;
+  height: 12px;
+  border: 1px solid #555;
+  border-radius: 50%;
+}
+
+.pip.on {
+  background: #3a7a30;
+}
+
+#scores {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#scores th,
+#scores td {
+  padding: 2px 4px;
+  text-align: right;
+}
+
+#scores th:first-child,
+#scores td:first-child {
+  text-align: left;
+}
+
+#scores tr.current {
+  background: #fff3c4;
+  font-weight: bold;
+}
+
+.log-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#log {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+#log li {
+  padding: 1px 0;
+}
+
+#log li.rolled {
+  margin-top: 4px;
+  border-top: 1px solid #e2dccd;
+  font-weight: bold;
+}
+
+#log li.fieldBattle,
+#log li.castleAttacked,
+#log li.gameOver {
+  color: #9b2a12;
+}
+
+#log li.future {
+  opacity: 0.35;
+}
+
+body.replaying #log li {
+  cursor: pointer;
+}
+
+.message {
+  margin: 0;
+  padding: 8px 12px;
+  background: #f8d7d3;
+  color: #8a1c10;
+}
+
+.curtain {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #2b2a26;
+  color: #f4ecd8;
+  font-size: 20px;
+  text-align: center;
+}
+
+.curtain[hidden] {
+  display: none;
+}
+
+/* --- Board ---------------------------------------------------------------- */
+
+.edges line {
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+}
+
+.edges line.access {
+  stroke: #3d2b16;
+  stroke-dasharray: none;
+  stroke-width: 1.5;
+}
+
+.node {
+  cursor: default;
+}
+
+.node .base {
+  fill: #e9d9a6;
+  stroke: #5b4a2a;
+  stroke-width: 1.5;
+}
+
+.node.start .base {
+  fill: #f4ecd8;
+}
+
+.node .castle-shape {
+  stroke: #2b2a26;
+}
+
+.node text,
+.label {
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+.stack circle {
+  stroke: #000a;
+  stroke-width: 1;
+}
+
+.stack text {
+  fill: #fff;
+  font-weight: bold;
+  paint-order: stroke;
+  stroke: #0008;
+  stroke-width: 2px;
+}
+
+.start-number {
+  font-size: 11px;
+  font-weight: bold;
+  fill: #5b4a2a;
+}
+
+.garrison {
+  font-size: 13px;
+  font-weight: bold;
+  fill: #fff;
+  paint-order: stroke;
+  stroke: #000a;
+  stroke-width: 2px;
+}
+
+.swords {
+  font-size: 10px;
+  fill: #222;
+}
+
+.shield path {
+  fill: #6b6b6b;
+  stroke: #fff;
+  stroke-width: 1.2;
+}
+
+.shield.revealed path {
+  fill: #f2f2f2;
+  stroke: #b02a1e;
+}
+
+.shield text {
+  font-size: 11px;
+  font-weight: bold;
+  fill: #fff;
+}
+
+.shield.revealed text {
+  fill: #b02a1e;
+}
+
+.label {
+  font-size: 10px;
+  fill: #fff;
+  paint-order: stroke;
+  stroke: #000a;
+  stroke-width: 2.5px;
+}
+
+/* Highlights: a ring drawn with the base shape's stroke. */
+.node.selectable,
+.node.move-target,
+.node.castle-target,
+.node.field-target,
+.node.source,
+.node.attack-target,
+.node.selected {
+  cursor: pointer;
+}
+
+.node.selectable .base {
+  stroke: #fff;
+  stroke-width: 3;
+}
+
+.node.move-target .base {
+  stroke: #2fd14a;
+  stroke-width: 5;
+}
+
+.node.castle-target .base {
+  stroke: #ff9a1f;
+  stroke-width: 5;
+}
+
+.node.field-target .base,
+.node.field-target .stack circle {
+  stroke: #ff3b2f;
+  stroke-width: 3;
+}
+
+.node.selected .base,
+.node.selected .stack circle {
+  stroke: #ffe14a;
+  stroke-width: 5;
+}
+
+.node.source .base,
+.node.source .stack circle {
+  stroke: #9fe8ff;
+  stroke-width: 3;
+  stroke-dasharray: 4 3;
+}
+
+.node.source.on .base,
+.node.source.on .stack circle {
+  stroke: #12b5e8;
+  stroke-width: 5;
+  stroke-dasharray: none;
+}
+
+.node.attack-target .base,
+.node.attack-target .stack circle {
+  stroke: #ff3b2f;
+  stroke-width: 6;
+}
+
+.node.shield-target .castle-shape {
+  stroke: #ffe14a;
+  stroke-width: 4;
+}
