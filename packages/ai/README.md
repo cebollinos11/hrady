@@ -125,7 +125,65 @@ split), mean points, thinking time per decision and game lengths.
 
 ### Results
 
-_Tournament numbers follow once the tuning runs are done._
+3-player games on the Hrady board, seats rotated, `--max-turns 1000`. A
+bot without skill wins 33.3%. Thinking time is the mean over all decisions,
+rolls and steps of a plan already made included, on one core of a 4-core
+cloud container.
+
+| Lineup (100 games each)        | Seeds     | Wins (ties split) | Win rate            | Mean points      | ms / decision | Game length (turns)              |
+| ------------------------------ | --------- | ----------------- | ------------------- | ---------------- | ------------- | -------------------------------- |
+| heuristic vs random vs random  | 1–100     | 100 / 0 / 0       | 100% / 0% / 0%      | 27.1 / 1.0 / 0.9 | 5.6 / 0 / 0   | mean 293, median 282, 151–515    |
+| mcts vs heuristic vs heuristic | 2001–2100 | 48.5 / 27 / 24.5  | 48.5% / 27% / 24.5% | 11.5 / 9.0 / 8.4 | 482 / 3 / 3   | mean 155, median 138.5, 69–1001¹ |
+
+¹ One game hit the turn cap and was scored as it stood.
+
+So the heuristic bot always beats random players, and the hard bot wins
+about half of its games against two heuristic bots, almost twice as often as
+either of them (100 games: 48.5 ± 5%, about three standard errors above 33.3%).
+
+How the hard bot got there (hard bot's win rate against two heuristic bots;
+60 games give about ± 6%, 100 games ± 5%):
+
+| Variant                                                  | Games | Win rate |
+| -------------------------------------------------------- | ----- | -------- |
+| 60 simulations, one round                                | 36    | 40.3%    |
+| 150 simulations, one round                               | 60    | 48.3%    |
+| 150 simulations, one round, plans must differ by 2       | 100   | 31.0%    |
+| 150 simulations, one round (heuristic's plan kept)       | 60    | 43.3%    |
+| same, another plan must beat it by 0.01 to replace it    | 60    | 35.8%    |
+| 300 simulations, one round                               | 60    | 40.8%    |
+| **150 simulations, two rounds** (the default)            | 60    | 53.3%    |
+| **150 simulations, two rounds**, seeds 2001–2100 (above) | 100   | 48.5%    |
+
+With one simulated round (only the opponents' replies) the edge over the
+heuristic was small and noisy (31–48%). Simulating the bot's own next turn and
+the replies to it as well made it consistent; more simulations per turn did
+not help as much as the longer horizon.
+
+## Design decisions
+
+Taken where the plan left room; listed here so they can be revisited.
+
+1. **Easy is the random bot**, as the plan maps the three bots to the three
+   levels. It hardly ever wins; a noisy heuristic bot would make a more
+   interesting easy opponent.
+2. **Public history.** Bots get the shields removed from the game
+   (`removed`), which every player has seen revealed. Nothing else from the
+   past is used, e.g. which castles were already attacked.
+3. **Hard is flat Monte-Carlo over whole-turn plans** with determinization,
+   not a full ISMCTS tree over single actions (see above). Simulated
+   opponents play the heuristic with beam 1 and know only public shield
+   information about the bot's castles.
+4. **Shields** are placed by a fixed rule (`wantsShield`) in every bot rather
+   than searched.
+5. **Candidate counts** are limited (whole/all-but-one/one for moves,
+   one/half/all into a castle, all-in or minimal field attacks); the random
+   bot alone uses every move and castle-attack count.
+6. **Time budget.** The hard bot stops at 150 simulations or 3 s per turn
+   plan; in the debug client it is therefore not reproducible from seeds,
+   while tournaments use the iteration budget only.
+7. **Tournament scoring.** Shared wins are split; games reaching the turn cap
+   are scored as they stand.
 
 ## Tests
 
