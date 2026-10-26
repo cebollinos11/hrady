@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "dev:web": "pnpm --filter @hrady/web dev",
     "dev:server": "pnpm --filter @hrady/server dev",
-    "dev:map-editor": "pnpm --filter @hrady/map-editor dev"
+    "dev:map-editor": "pnpm --filter @hrady/map-editor dev",
+    "tournament": "pnpm --filter @hrady/ai tournament"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

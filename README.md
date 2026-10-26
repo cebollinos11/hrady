@@ -20,12 +20,14 @@ pnpm test          # Vitest
 pnpm dev:web         # three.js client (apps/web); /debug.html is the 2D hotseat client
 pnpm dev:server      # Worker + Durable Object via wrangler dev (apps/server)
 pnpm dev:map-editor  # board tracing tool (tools/map-editor)
+pnpm tournament --lineup heuristic,random,random --games 100  # bot-vs-bot (packages/ai)
 ```
 
 | Path               | What                                                     |
 | ------------------ | -------------------------------------------------------- |
 | `packages/board`   | board graph (`hrady.json`), types, loader, validation    |
 | `packages/engine`  | pure, deterministic rules engine                         |
+| `packages/ai`      | bots (random, heuristic, Monte-Carlo) and tournaments    |
 | `apps/web`         | Vite + three.js client, 2D debug client (`debug.html`)   |
 | `apps/server`      | Cloudflare Worker + SQLite-backed Durable Object         |
 | `tools/map-editor` | click-to-trace editor over the board photo (not shipped) |
