@@ -80,7 +80,7 @@ export function heightAt(layout: Layout, p: Point): number {
   const bed = WATER_Y - 0.03 - RIVER_DEPTH * smoothstep(0, 1, -river);
   const h = land + (bed - land) * wet;
   // Islets: nodes always stand on dry, level ground.
-  const islet = 1 - smoothstep(0.05, 0.3, node);
+  const islet = 1 - smoothstep(0.02, 0.16, node);
   return h + (GROUND_Y - h) * islet;
 }
 

@@ -161,3 +161,15 @@ export function stepDuration(step: Step): number {
       return 0;
   }
 }
+
+/**
+ * The knights left behind while the travellers of a step are on their way:
+ * `before` without the knights that move (trips and castle entries).
+ */
+export function departed(before: Knights, step: Step): Knights {
+  const knights: Knights = { ...before };
+  if (step.kind === 'travel')
+    for (const { from, count } of step.sources) add(knights, from, step.player, -count);
+  if (step.kind === 'enter') add(knights, step.from, step.player, -step.count);
+  return knights;
+}

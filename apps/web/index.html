@@ -2,17 +2,111 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1d2a1f" />
     <title>Hrady</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <canvas id="scene"></canvas>
-    <div id="hud" class="hud">
-      <h1>Hrady</h1>
-      <p>Scaffold scene — drag to orbit, scroll to zoom.</p>
-      <p><a href="debug.html">Play the 2D version against bots →</a></p>
+
+    <header class="topbar">
+      <strong class="brand">Hrady</strong>
+      <button id="new-game" title="Start a new game">New game</button>
+      <span class="cams" role="group" aria-label="Camera">
+        <button data-cam="overview" title="Whole board (1)">Board</button>
+        <button data-cam="table" title="Table view (2)">Table</button>
+        <button data-cam="focus" title="Zoom on your knights or the selection (3)">Zoom</button>
+      </span>
+      <button id="settings-button" title="Settings" aria-expanded="false">⚙</button>
+    </header>
+
+    <div id="settings" class="popover" hidden>
+      <label
+        >Bots
+        <select id="bot-speed">
+          <option value="slow">Slow</option>
+          <option value="normal">Normal</option>
+          <option value="fast">Fast</option>
+        </select>
+      </label>
+      <label
+        >Animations
+        <select id="animations">
+          <option value="normal">Normal</option>
+          <option value="fast">Fast</option>
+          <option value="off">Off</option>
+        </select>
+      </label>
+      <label title="Cover the board when it passes between two people at this screen"
+        ><input id="pass-screen" type="checkbox" /> Pass screen</label
+      >
+      <label><input id="labels" type="checkbox" /> Castle names (L)</label>
+      <p class="help">
+        Drag to pan, right-drag or two fingers to rotate, wheel or pinch to zoom. Click one of your
+        stacks, then a highlighted target. Keys: R roll, E end turn, S shield, Z undo, Esc cancel,
+        1–3 camera.
+      </p>
+      <p><a href="debug.html">2D debug client →</a></p>
     </div>
+
+    <aside id="panel" class="panel">
+      <section class="turn">
+        <canvas id="die" width="72" height="72" title="Die"></canvas>
+        <div id="status"></div>
+      </section>
+      <section id="controls"></section>
+      <section id="selection"></section>
+      <section>
+        <table id="players" class="players"></table>
+      </section>
+      <section id="log-box" class="log-box">
+        <button id="log-toggle" class="link" aria-expanded="true">Log</button>
+        <ol id="log"></ol>
+      </section>
+    </aside>
+
+    <div id="tooltip" class="tooltip" hidden></div>
+    <div id="toast" class="toast" hidden></div>
+
+    <div id="setup" class="modal" hidden>
+      <form id="setup-form" class="dialog">
+        <h2>New game</h2>
+        <label
+          >Players
+          <select id="setup-players">
+            <option>3</option>
+            <option>4</option>
+            <option>5</option>
+          </select>
+        </label>
+        <table id="setup-seats" class="seats"></table>
+        <label>Seed <input id="setup-seed" type="number" placeholder="random" /></label>
+        <div class="row">
+          <button type="submit" class="primary">Start</button>
+          <button type="button" id="setup-cancel">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="game-over" class="modal" hidden>
+      <div class="dialog">
+        <h2 id="game-over-title"></h2>
+        <table id="game-over-scores" class="players"></table>
+        <div class="row">
+          <button id="game-over-new" class="primary">New game</button>
+          <button id="game-over-close">Look at the board</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="curtain" class="curtain" hidden>
+      <div>
+        <p id="curtain-text"></p>
+        <button id="reveal" class="primary">Show board</button>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

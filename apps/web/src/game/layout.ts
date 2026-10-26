@@ -69,12 +69,12 @@ export interface RiverPoint {
 }
 
 export const RHINE: readonly RiverPoint[] = [
-  { x: 0.43, y: -0.05, half: 0.06 },
-  { x: 0.45, y: 0.08, half: 0.06 },
-  { x: 0.44, y: 0.17, half: 0.055 },
-  { x: 0.46, y: 0.25, half: 0.055 },
-  { x: 0.46, y: 0.33, half: 0.055 },
-  { x: 0.47, y: 0.42, half: 0.06 },
+  { x: 0.43, y: -0.05, half: 0.07 },
+  { x: 0.45, y: 0.08, half: 0.07 },
+  { x: 0.44, y: 0.17, half: 0.065 },
+  { x: 0.46, y: 0.25, half: 0.065 },
+  { x: 0.46, y: 0.33, half: 0.065 },
+  { x: 0.47, y: 0.42, half: 0.07 },
   { x: 0.5, y: 0.5, half: 0.065 },
   { x: 0.53, y: 0.58, half: 0.08 },
   { x: 0.55, y: 0.67, half: 0.08 },
