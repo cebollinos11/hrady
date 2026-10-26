@@ -17,7 +17,7 @@ pnpm lint          # ESLint + Prettier check
 pnpm typecheck     # tsc in every package
 pnpm test          # Vitest
 
-pnpm dev:web         # three.js client (apps/web); /debug.html is the 2D hotseat client
+pnpm dev:web         # 3D client (apps/web); /debug.html is the 2D debug client
 pnpm dev:server      # Worker + Durable Object via wrangler dev (apps/server)
 pnpm dev:map-editor  # board tracing tool (tools/map-editor)
 pnpm tournament --lineup heuristic,random,random --games 100  # bot-vs-bot (packages/ai)
@@ -28,12 +28,13 @@ pnpm tournament --lineup heuristic,random,random --games 100  # bot-vs-bot (pack
 | `packages/board`   | board graph (`hrady.json`), types, loader, validation    |
 | `packages/engine`  | pure, deterministic rules engine                         |
 | `packages/ai`      | bots (random, heuristic, Monte-Carlo) and tournaments    |
-| `apps/web`         | Vite + three.js client, 2D debug client (`debug.html`)   |
+| `apps/web`         | three.js game client, 2D debug client (`debug.html`)     |
 | `apps/server`      | Cloudflare Worker + SQLite-backed Durable Object         |
 | `tools/map-editor` | click-to-trace editor over the board photo (not shipped) |
 
 Every push to `main` builds `apps/web` and publishes it on GitHub Pages
-(`.github/workflows/pages.yml`); the 2D client with bots is at `debug.html`.
+(`.github/workflows/pages.yml`): the 3D game at the root, the 2D debug client
+at `debug.html`.
 
 The server echoes WebSocket messages at `/ws/<room>` for now. Deploy with
 `pnpm --filter @hrady/server deploy` after `npx wrangler login`.

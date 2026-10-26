@@ -2,7 +2,7 @@ import { apply, initialState, type GameState } from '@hrady/engine';
 import { describe, expect, it } from 'vitest';
 import { lcg, progressBot } from '../../../packages/engine/test/bot';
 import { scenario } from '../../../packages/engine/test/fixtures';
-import { countsAfter, planSteps, stepDuration, type Knights } from '../src/game/steps';
+import { countsAfter, departed, planSteps, stepDuration, type Knights } from '../src/game/steps';
 
 /** Knights as `node:player` → count, without empty entries, for comparing. */
 function flat(knights: Knights): Record<string, number> {
@@ -83,6 +83,30 @@ describe('planSteps', () => {
       battle: null,
     });
     expect(before).toEqual({ a: [2, 0, 0] });
+  });
+});
+
+describe('departed', () => {
+  it('takes the travellers off their nodes until they arrive', () => {
+    const before = { a: [3, 0, 0], f: [1, 0, 0], b: [0, 2, 0] };
+    const step = {
+      kind: 'travel' as const,
+      player: 0,
+      sources: [
+        { from: 'a', count: 2 },
+        { from: 'f', count: 1 },
+      ],
+      to: 'b',
+      battle: { defender: 1, defeated: 2 },
+    };
+    expect(flat(departed(before, step))).toEqual({ 'a:0': 1, 'b:1': 2 });
+  });
+
+  it('takes the knights entering a castle off the marker', () => {
+    const before = { d: [6, 0, 0] };
+    const step = { kind: 'enter' as const, player: 0, castle: 'tower', from: 'd', count: 2 };
+    expect(flat(departed(before, step))).toEqual({ 'd:0': 4 });
+    expect(departed(before, { kind: 'roll', player: 0, value: 3 })).toEqual(before);
   });
 });
 

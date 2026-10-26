@@ -473,7 +473,7 @@ export class BoardScene {
   async popup(id: string, text: string, colour: string, duration: number) {
     const n = this.node(id);
     const s = popupLabel(text, colour);
-    const y = n.node.type === 'castle' ? 1.35 : 0.8;
+    const y = n.node.type === 'castle' ? 1.2 : 0.75;
     this.effects.add(s);
     await this.tween(duration, (t) => {
       s.position.set(n.pos.x, y + t * 0.35, n.pos.z);

@@ -26,7 +26,10 @@ export function button(
   onClick: () => void,
   props: Partial<HTMLButtonElement> = {},
 ): HTMLButtonElement {
-  return h('button', { type: 'button', ...props, onclick: onClick }, label);
+  // A trailing key hint like "Roll (R)" is hidden on touch screens.
+  const hint = /^(.*)( \(.+\))$/.exec(label);
+  const text = hint ? [hint[1]!, h('span', { className: 'key' }, hint[2]!)] : [label];
+  return h('button', { type: 'button', ...props, onclick: onClick }, ...text);
 }
 
 /** A − [n] + counter. */

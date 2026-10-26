@@ -141,7 +141,9 @@ die roll animation, selection/move UX (click stack → pick count → click
 target), legal-move highlighting, camera presets, responsive layout, HUD
 (turn, MP left, supply, scores), game log. Debug view stays behind a flag.
 **Done when:** local games vs AI are fully playable in 3D on desktop and
-mobile.
+mobile. *(Implemented in [`apps/web`](../apps/web/README.md): original
+procedural board, 1/2/5 figures, animations from engine events, hotseat with
+bots and save/resume in `localStorage`; the debug client is at `debug.html`.)*
 
 ### Stage 6 — Online multiplayer
 Worker routes (`/api/rooms`, `/ws/:room`), `GameRoom` DO with hibernating

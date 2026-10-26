@@ -527,7 +527,7 @@ button.link::before {
     right: 0;
     bottom: 0;
     width: auto;
-    max-height: 46vh;
+    height: 44vh;
     padding: 10px 12px max(10px, env(safe-area-inset-bottom));
     gap: 8px;
     border-radius: 14px 14px 0 0;
@@ -548,11 +548,21 @@ button.link::before {
   }
 
   .toast {
-    bottom: calc(46vh + 12px);
+    bottom: calc(44vh + 12px);
     left: 50%;
   }
 
   .tooltip {
+    display: none;
+  }
+}
+
+.players td:last-child {
+  white-space: nowrap;
+}
+
+@media (hover: none) {
+  .key {
     display: none;
   }
 }

@@ -109,17 +109,25 @@ export class Animator {
         return;
       }
       case 'siege': {
-        const text =
+        const defence =
           step.shield === null
             ? step.defender === null
               ? `${step.garrison} ⚔`
               : 'No shield'
             : `Shield ${step.shield}`;
+        // The attackers leave their marker for the lunge and come back if they win.
+        const away = countsAfter(knights, { ...step, won: false });
+        s.showKnights(away);
         await Promise.all([
           s.travel(step.player, step.from, step.castle, step.attackers, ms * 0.5, true),
-          s.popup(step.castle, text, step.won ? '#ffffff' : '#ffb4a8', ms * 0.8),
+          s.popup(
+            step.castle,
+            `${defence} · ${step.won ? 'taken' : 'held'}`,
+            step.won ? '#ffffff' : '#ffb4a8',
+            ms * 0.8,
+          ),
         ]);
-        if (!step.won) s.showKnights(countsAfter(knights, step));
+        s.showKnights(countsAfter(knights, step));
         await s.burst(
           step.won ? step.castle : step.from,
           step.won ? s.colour(step.player) : '#ff3b2f',

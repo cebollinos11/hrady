@@ -59,6 +59,8 @@ let options = optionsFor(session.state);
 let selection: Selection = NONE;
 /** The state the board and HUD show: behind `session.state` while animations play. */
 let shown: GameState = session.state;
+/** The state after the last queued animation; the next one starts from it. */
+let queued: GameState = session.state;
 /** Number of log entries behind `shown`. */
 let shownLength = session.log.length;
 /** Player the board is hidden from until they confirm they are at the screen. */
@@ -92,7 +94,7 @@ function persist() {
 /** Shows a state on the board straight away (new game, undo, resume). */
 function snap() {
   animator.clear();
-  shown = session.state;
+  shown = queued = session.state;
   shownLength = session.log.length;
   const view = viewFor(shown, viewer());
   scene.showKnights(view.knights);
@@ -123,13 +125,13 @@ function perform(action: Action) {
   }
   const before = viewer();
   const entry = next.log.at(-1)!;
-  const prev = shown;
+  const prev = queued;
   session = next;
   options = optionsFor(session.state);
   selection = NONE;
   passScreen(before);
   persist();
-  const after = session.state;
+  const after = (queued = session.state);
   const length = session.log.length;
   animator.enqueue({
     before: viewFor(prev, viewer()).knights,
@@ -733,5 +735,7 @@ if (import.meta.env.DEV)
       busy: () => animator.busy,
       look: (id: string) => scene.rig.go('focus', scene.nodePoint(id), true),
       moves: () => [...options.moves].map(([from, to]) => [from, [...to]]),
+      castles: () => [...options.castles].map(([from, to]) => [from, [...to]]),
+      fields: () => [...options.fields].map(([target, from]) => [target, [...from]]),
     },
   });
