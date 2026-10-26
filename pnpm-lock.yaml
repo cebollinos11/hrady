@@ -63,6 +63,12 @@ importers:
 
   packages/board: {}
 
+  packages/engine:
+    dependencies:
+      '@hrady/board':
+        specifier: workspace:*
+        version: link:../board
+
   tools/map-editor:
     dependencies:
       '@hrady/board':
