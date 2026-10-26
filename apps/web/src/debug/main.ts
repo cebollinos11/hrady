@@ -144,7 +144,7 @@ const isLegal = (action: Action) => validateAction(session.state, action) === nu
 function onNodeClick(id: string) {
   if (replay || curtain !== null || botTurn()) return;
   const result = click(selection, options, id, isLegal);
-  if (result.action) perform(result.action);
+  if (result.actions) for (const a of result.actions) perform(a);
   else select(result.selection);
 }
 

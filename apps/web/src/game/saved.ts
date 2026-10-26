@@ -15,6 +15,8 @@ export interface Settings {
   /** Cover the board when it passes between two humans at this screen. */
   passScreen: boolean;
   labels: boolean;
+  /** Arrows for what the other players did since your last turn. */
+  trails: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -22,6 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   animations: 'normal',
   passScreen: true,
   labels: true,
+  trails: true,
 };
 
 export const BOT_DELAY: Record<Speed, number> = { slow: 1400, normal: 650, fast: 150 };
@@ -52,6 +55,7 @@ export function loadSettings(store: Store): Settings {
     animations: pick(s.animations, ['normal', 'fast', 'off'], DEFAULT_SETTINGS.animations),
     passScreen: pick(s.passScreen, [true, false], DEFAULT_SETTINGS.passScreen),
     labels: pick(s.labels, [true, false], DEFAULT_SETTINGS.labels),
+    trails: pick(s.trails, [true, false], DEFAULT_SETTINGS.trails),
   };
 }
 

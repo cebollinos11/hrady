@@ -395,6 +395,19 @@ button.link::before {
   color: var(--ink-dim);
 }
 
+#log li .swatch {
+  width: 8px;
+  height: 8px;
+  margin-right: 1px;
+  vertical-align: 0;
+}
+
+#log li.points:hover {
+  border-radius: 4px;
+  background: rgb(255 255 255 / 8%);
+  color: var(--ink);
+}
+
 #log li.turn-start {
   margin-top: 4px;
   color: var(--ink);
@@ -432,6 +445,11 @@ button.link::before {
   border-radius: 8px;
   background: #7a2a22;
   transform: translateX(-50%);
+}
+
+.toast.info {
+  border: 1px solid var(--line);
+  background: var(--glass-strong);
 }
 
 .modal,

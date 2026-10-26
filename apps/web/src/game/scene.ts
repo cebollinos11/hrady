@@ -23,6 +23,7 @@ import {
   entranceArrow,
   knightFigure,
   marker,
+  minPixels,
   nameLabel,
   playerColour,
   playerMaterial,
@@ -31,7 +32,9 @@ import {
   shieldToken,
   startArea,
   swords,
+  textTexture,
 } from './models';
+import type { Trail } from './recent';
 import type { Knights } from './steps';
 import { groundColour, heightAt } from './terrain';
 
@@ -77,9 +80,14 @@ export class BoardScene {
   private readonly stacks = new Map<string, { key: string; group: THREE.Group }>();
   private readonly shields = new Map<string, { key: string; group: THREE.Group }>();
   private readonly banners = new Map<string, THREE.Mesh>();
+  private readonly roofs = new Map<string, THREE.Mesh[]>();
+  /** A ring round each castle's foot in its owner's colour, hidden while neutral. */
+  private readonly ownerRings = new Map<string, THREE.Mesh>();
   private readonly labels = new THREE.Group();
   private readonly highlights = new THREE.Group();
   private readonly effects = new THREE.Group();
+  private readonly trails = new THREE.Group();
+  private readonly pings = new THREE.Group();
   private readonly raycaster = new THREE.Raycaster();
   private tweens: Tween[] = [];
   private knights: Knights = {};
@@ -101,7 +109,7 @@ export class BoardScene {
     this.addLights();
     this.addTerrain();
     this.addBoardPieces();
-    this.scene.add(this.labels, this.highlights, this.effects);
+    this.scene.add(this.labels, this.highlights, this.effects, this.trails, this.pings);
   }
 
   // --- Static board ---------------------------------------------------------
@@ -214,9 +222,17 @@ export class BoardScene {
         sw.scale.setScalar(1.25);
         c.add(sw);
         this.banners.set(node.id, c.userData.banner as THREE.Mesh);
+        this.roofs.set(node.id, c.userData.roofs as THREE.Mesh[]);
         piece = c;
-        const label = nameLabel(node.name, node.value);
+        const owner = ring(0.5, '#ffffff', 0.09);
+        (owner.material as THREE.MeshBasicMaterial).opacity = 1;
+        owner.position.set(pos.x, 0.025, pos.z);
+        owner.visible = false;
+        this.ownerRings.set(node.id, owner);
+        this.scene.add(owner);
+        const label = nameLabel(node.name, node.value, 0.14);
         label.position.set(pos.x, 1.05, pos.z);
+        minPixels(label, 17);
         this.labels.add(label);
       }
       piece.position.set(pos.x, 0, pos.z);
@@ -325,6 +341,13 @@ export class BoardScene {
     for (const [id, view] of Object.entries(castles)) {
       const banner = this.banners.get(id);
       if (banner) banner.material = playerMaterial(view.owner);
+      for (const roof of this.roofs.get(id) ?? [])
+        roof.material = view.owner === null ? MATERIALS.roof : playerMaterial(view.owner);
+      const owner = this.ownerRings.get(id);
+      if (owner) {
+        owner.visible = view.owner !== null;
+        (owner.material as THREE.MeshBasicMaterial).color.set(playerColour(view.owner));
+      }
       const shield = view.shield;
       const key = shield ? `${view.owner}:${shield.value}:${shield.revealed}` : '';
       const old = this.shields.get(id);
@@ -364,11 +387,98 @@ export class BoardScene {
     if (marks.selected) add(marks.selected, HIGHLIGHT.selected, 0.07);
     for (const id of marks.moves) add(id, HIGHLIGHT.move, 0.06, true);
     for (const id of marks.castles) add(id, HIGHLIGHT.castle, 0.07, true);
+    // Targets more than one step away say how many movement points they take.
+    for (const [id, cost] of marks.costs) {
+      const n = this.layout.nodes.get(id);
+      if (!n || cost < 2) continue;
+      const colour = marks.castles.has(id) ? HIGHLIGHT.castle : HIGHLIGHT.move;
+      const tag = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: textTexture(String(cost), { background: '#1d2a1f', outline: colour, size: 150 }),
+          depthTest: false,
+        }),
+      );
+      tag.scale.setScalar(0.16);
+      minPixels(tag, 16);
+      tag.renderOrder = 11;
+      const r = n.node.type === 'castle' ? 0.45 : 0.3;
+      tag.position.set(n.pos.x + r * 0.75, 0.2, n.pos.z + r * 0.75);
+      this.highlights.add(tag);
+    }
     for (const id of marks.fields) add(id, HIGHLIGHT.field, 0.06, true);
     if (marks.target) add(marks.target, HIGHLIGHT.field, 0.09, true, 1.1);
     for (const [id, count] of marks.sources)
       add(id, HIGHLIGHT.source, count ? 0.08 : 0.035, !count);
     if (marks.shield) add(marks.shield, HIGHLIGHT.shield, 0.08, true, 1.15);
+  }
+
+  /** Arrows for what the other players did since the viewer's last turn. */
+  showTrails(trails: readonly Trail[]) {
+    this.trails.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.geometry.dispose();
+      if (o instanceof THREE.Mesh || o instanceof THREE.Sprite)
+        (o.material as THREE.Material).dispose();
+    });
+    this.trails.clear();
+    for (const t of trails) {
+      if (!this.layout.nodes.has(t.from) || !this.layout.nodes.has(t.to)) continue;
+      const a = this.standPoint(t.from, t.player);
+      const b = this.standPoint(t.to, t.player);
+      // Stop short of the target so the arrow head stays visible next to it.
+      const end = a.clone().lerp(b, t.kind === 'lost' ? 0.6 : 0.82);
+      a.lerp(b, 0.12);
+      const lift = 0.25 + a.distanceTo(end) * 0.15;
+      const mid = a
+        .clone()
+        .lerp(end, 0.5)
+        .setY(Math.max(a.y, end.y) + lift);
+      const curve = new THREE.QuadraticBezierCurve3(a, mid, end);
+      const material = new THREE.MeshBasicMaterial({
+        color: playerColour(t.player),
+        transparent: true,
+        opacity: t.kind === 'move' ? 0.7 : 0.9,
+        depthWrite: false,
+      });
+      const width = t.kind === 'move' ? 0.022 : 0.035;
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 16, width, 5), material);
+      const head = new THREE.Mesh(new THREE.ConeGeometry(width * 3.2, width * 7, 8), material);
+      head.position.copy(end);
+      head.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        curve.getTangent(1).normalize(),
+      );
+      this.trails.add(tube, head);
+      if (t.kind === 'lost') {
+        const cross = new THREE.Sprite(
+          new THREE.SpriteMaterial({
+            map: textTexture('✕', { colour: '#ff6b5e', size: 170, weight: 900 }),
+            depthTest: false,
+          }),
+        );
+        cross.scale.setScalar(0.3);
+        cross.position.copy(end).setY(end.y + 0.12);
+        cross.renderOrder = 8;
+        this.trails.add(cross);
+      }
+    }
+  }
+
+  setTrailsVisible(visible: boolean) {
+    this.trails.visible = visible;
+  }
+
+  /** Pulsing white rings on some nodes, e.g. those of the log entry under the mouse. */
+  showPings(ids: readonly string[]) {
+    this.pings.clear();
+    for (const id of ids) {
+      const n = this.layout.nodes.get(id);
+      if (!n) continue;
+      const r = n.node.type === 'path' ? 0.4 : 0.56;
+      const m = ring(r, '#ffffff', 0.08);
+      m.position.set(n.pos.x, 0.1, n.pos.z);
+      m.userData.pulse = true;
+      this.pings.add(m);
+    }
   }
 
   // --- Picking ----------------------------------------------------------------
@@ -530,9 +640,30 @@ export class BoardScene {
       else t.resolve();
     }
     const pulse = 0.55 + 0.4 * Math.sin(now / 160);
-    for (const m of this.highlights.children as THREE.Mesh[])
+    for (const m of [...this.highlights.children, ...this.pings.children] as THREE.Mesh[])
       if (m.userData.pulse) (m.material as THREE.MeshBasicMaterial).opacity = pulse;
     this.rig.update(now);
+    this.sizeSprites();
     this.renderer.render(this.scene, this.rig.camera);
+  }
+
+  /** Scales up sprites marked with `minPixels` that would be smaller than that on screen. */
+  private sizeSprites() {
+    const camera = this.rig.camera;
+    const { clientWidth: w, clientHeight: h } = this.canvas;
+    // World height of one CSS pixel at distance 1; small screens get smaller minimums.
+    const small = Math.min(1, Math.max(0.7, Math.min(w, h) / 700));
+    const perPixel = (small * 2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, h);
+    const at = new THREE.Vector3();
+    const groups = [this.labels, this.highlights, ...[...this.stacks.values()].map((s) => s.group)];
+    for (const group of groups)
+      group.traverse((o) => {
+        const px = o.userData.minPx as number | undefined;
+        if (!px || !(o instanceof THREE.Sprite)) return;
+        const size = o.userData.size as { x: number; y: number };
+        const min = px * perPixel * o.getWorldPosition(at).distanceTo(camera.position);
+        const k = Math.max(1, min / size.y);
+        o.scale.set(size.x * k, size.y * k, 1);
+      });
   }
 }

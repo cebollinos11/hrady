@@ -20,10 +20,14 @@ board photo is never used or shipped by the 3D client.
   own game.
 - **Playing**: _Roll_ (<kbd>R</kbd>), then click one of your stacks (white
   ring) to select it. The count defaults to the whole stack; change it in the
-  panel (−/+, _1_, _All_, or <kbd>↑</kbd>/<kbd>↓</kbd>). Click a green node
-  to move, an orange castle to attack it (the count moves in on a win) or a
-  red enemy marker to start a field attack. Highlights come from
-  `legalActions`, through the same `selection.ts` as the debug client.
+  panel (−/+, _1_, _All_, or <kbd>↑</kbd>/<kbd>↓</kbd>). Every node the stack
+  can walk to with the movement points left is ringed green, with the MP it
+  takes when more than one; click it to walk there in one go (the stack stays
+  selected while it can still move). Castles it can attack, right away or
+  after walking to an entrance, are ringed orange (the count moves in on a
+  win); a red enemy marker starts a field attack. Paths are planned by
+  `pathsFrom` in `selection.ts`, which checks every step with the engine; the
+  debug client shares it.
 - **Field attacks** from several directions: once an attack is started, every
   node that may contribute gets a blue ring; click one to add it with all it
   can send (again to remove it), adjust the counts in the panel, then click
@@ -31,8 +35,9 @@ board photo is never used or shipped by the 3D client.
   reason while the attack is not legal.
 - **Shields**: after a conquest the panel offers _Place a shield_
   (<kbd>S</kbd>); any other action declines it.
-- **Undo** (<kbd>Z</kbd>) takes back the last move, _Undo turn_ every move
-  since the roll, the last battle or shield.
+- **Undo** (<kbd>Z</kbd>) takes back the last move, or the whole walk if the
+  last click walked several steps; _Undo turn_ every move since the roll, the
+  last battle or shield.
 - **Bots** run in the Web Worker shared with the debug client and only see
   `viewFor` their seat plus the removed shields. Each action waits for the
   animations and the delay set under ⚙ (Slow/Normal/Fast); the hard bot
@@ -42,12 +47,23 @@ board photo is never used or shipped by the 3D client.
   _Pass screen_ on and two or more humans, a curtain covers the screen
   whenever that viewer changes. Your own face-down shields show their value
   in brackets on the board and in the players table.
+- **What the others did**: since your last turn, every move of the other
+  players is drawn as an arrow in their colour (field battles and castle
+  attacks thicker, a failed siege stops short with a ✕); ⚙ _Last moves_
+  (<kbd>T</kbd>) hides them. When your turn comes, a note at the bottom sums
+  up the battles (`recent.ts`) and your stacks flash.
+- **Log**: path markers are named after their castle ("gate of Kajetce" for
+  an entrance, else "road by" the closest castle, `placeName`), walks are one
+  line, and hovering a line rings its nodes on the board.
 - **Camera**: drag (one finger) pans, right-drag (two fingers) rotates, wheel
   (pinch) zooms. The target stays over the board and the camera above it.
-  Presets: _Board_ (<kbd>1</kbd>, whole board from above, turned to fit the
-  screen), _Table_ (<kbd>2</kbd>, seen from the bottom edge), _Zoom_
-  (<kbd>3</kbd>, the selection or your knights). <kbd>L</kbd> toggles castle
-  names.
+  Presets: _Board_ (<kbd>1</kbd>, whole board from above) and _Table_
+  (<kbd>2</kbd>, seen from the near edge) look from the same side, so the
+  river runs left to right in a landscape window and top to bottom in a
+  portrait one; both are fitted to the free part of the view by projecting
+  the board's corners. _Zoom_ (<kbd>3</kbd>) looks at the selection, or fits
+  all your stacks; pressing it again visits each stack, largest first.
+  <kbd>L</kbd> toggles castle names.
 - **Layout**: a side panel on desktop, a bottom sheet under 760 px; the 3D
   view takes the rest of the window.
 
@@ -67,11 +83,14 @@ board photo is never used or shipped by the 3D client.
   and that many little shields.
 - **Castles** face their entrance(s): rock base, open courtyard where the
   garrison stands, keep, one corner tower and one planted sword per sword of
-  value, and a banner in the owner's colour (white while neutral). The name
-  label carries the swords too.
+  value. Neutral castles have slate roofs; an owned castle's roofs, banner
+  and a ring round its foot take the owner's colour, so ownership reads from
+  the whole-board view. The name label ends in a gold tab with the value.
 - **Knights** are composed from 1, 2 and 5 figures (`figures.ts`: as many
   fives as fit, then twos, then ones) with a count badge; colours share a
-  start area side by side.
+  start area side by side. Count badges and castle labels never get smaller
+  than about 20 px on screen (`minPixels`), so every stack can be found from
+  the whole-board view.
 - **Shields** stand beside their castle in the owner's colour: "?" while face
   down, "(n)" for your own face-down shield, a white face with the value once
   revealed.

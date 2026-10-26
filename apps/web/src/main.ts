@@ -21,10 +21,12 @@ import {
   type Settings,
 } from './game/saved';
 import { BoardScene } from './game/scene';
+import { sinceLastTurn, summary, trailsOf } from './game/recent';
 import { planSteps } from './game/steps';
 import type { Preset } from './game/camera';
+import type { Point } from './game/layout';
 import { BotClient } from './shared/botClient';
-import { describeEvent, nodeName, playerName } from './shared/describe';
+import { logLines, placeName, playerName } from './shared/describe';
 import { NO_MARKS, marksFor } from './shared/marks';
 import {
   SEAT_CHOICES,
@@ -37,13 +39,15 @@ import {
 import {
   NONE,
   attackAction,
+  carryOver,
   click,
   optionsFor,
   setContribution,
   setCount,
+  targetsFor,
   type Selection,
 } from './shared/selection';
-import { act, canUndo, newSession, undo, undoTurn, type Session } from './shared/session';
+import { act, canUndo, newSession, truncate, undo, undoTurn, type Session } from './shared/session';
 
 // The 2D debug client stays reachable: index.html?debug opens it.
 if (new URLSearchParams(location.search).has('debug')) location.replace('debug.html');
@@ -66,6 +70,8 @@ let shownLength = session.log.length;
 /** Player the board is hidden from until they confirm they are at the screen. */
 let curtain: PlayerId | null = null;
 let gameOverSeen = session.state.phase === 'over';
+/** The last multi-step walk, taken back as a whole by Undo while it is the latest action. */
+let lastWalk: { end: number; size: number } | null = null;
 
 function randomSeed() {
   return Math.floor(Math.random() * 2 ** 31);
@@ -115,13 +121,13 @@ function passScreen(before: PlayerId | null) {
     curtain = now;
 }
 
-function perform(action: Action) {
+function perform(action: Action): boolean {
   let next: Session;
   try {
     next = act(session, action);
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e));
-    return;
+    return false;
   }
   const before = viewer();
   const entry = next.log.at(-1)!;
@@ -146,6 +152,29 @@ function perform(action: Action) {
     },
   });
   render();
+  return true;
+}
+
+/**
+ * Plays the actions of a click in order (a walk is several moves), then
+ * selects `after` if it can still act.
+ */
+function play(actions: readonly Action[], after: Selection = NONE) {
+  const start = session.record.actions.length;
+  for (const action of actions) if (!perform(action)) return;
+  lastWalk =
+    actions.length > 1 && actions.every((a) => a.type === 'move')
+      ? { end: start + actions.length, size: actions.length }
+      : null;
+  select(carryOver(after, options));
+}
+
+/** Takes back the last move, or the whole last walk if it was made in one click. */
+function undoLast() {
+  const length = session.record.actions.length;
+  const walk = lastWalk;
+  lastWalk = null;
+  setSession(walk?.end === length ? truncate(session, length - walk.size) : undo(session));
 }
 
 function setSession(next: Session) {
@@ -172,7 +201,7 @@ function onNodeClick(id: string) {
   }
   if (!interactive()) return;
   const result = click(selection, options, id, isLegal);
-  if (result.action) perform(result.action);
+  if (result.actions) play(result.actions, result.selection);
   else select(result.selection);
 }
 
@@ -238,15 +267,17 @@ function dropBotRequest() {
 // --- Rendering -------------------------------------------------------------
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
-function toast(text: string) {
+/** A message at the bottom of the board: an error, or news when `info`. */
+function toast(text: string, duration = 4000, info = false) {
   const el = $('#toast');
   el.textContent = text;
+  el.classList.toggle('info', info);
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), 4000);
+  toastTimer = setTimeout(() => (el.hidden = true), duration);
 }
 
-const name = (id: string) => nodeName(board(), id);
+const name = (id: string) => placeName(board(), id);
 
 function renderControls() {
   const controls = $('#controls');
@@ -296,7 +327,7 @@ function renderControls() {
       h(
         'div',
         { className: 'row' },
-        button('Undo (Z)', () => setSession(undo(session)), {
+        button('Undo (Z)', undoLast, {
           disabled: !canUndo(session),
           title: 'Take back the last move',
         }),
@@ -352,7 +383,7 @@ function renderSelection() {
       h(
         'p',
         { className: 'hint' },
-        'Click a green node to move, an orange castle to attack it (the count moves in on a win), or a red marker to attack it.',
+        'Click a green node to walk there (a number on the ring is the MP it takes), an orange castle to walk to it and attack (the count moves in on a win), or a red marker to attack it.',
       ),
     );
     return;
@@ -413,23 +444,57 @@ function renderSelection() {
   panel.replaceChildren(h('p', { className: 'hint' }, hint));
 }
 
+let trailsShown = '';
+/** Arrows for what the others did since the viewer's last turn, as far as the board shows. */
+function renderTrails() {
+  const me = viewer() ?? shown.current;
+  const key = `${shownLength}:${me}`;
+  if (key === trailsShown) return;
+  trailsShown = key;
+  scene.showTrails(trailsOf(sinceLastTurn(session.log.slice(0, shownLength), me)));
+}
+
+/** Turn (and player) last greeted with a summary and their stacks lighting up. */
+let greeted = '';
+/** Once the board has caught up at the start of a human's turn, sums up what happened. */
+function greet() {
+  const { state } = session;
+  if (animator.busy || curtain !== null || botTurn() || shown !== state || state.phase !== 'roll')
+    return;
+  const key = `${state.turn}:${state.current}`;
+  if (key === greeted) return;
+  greeted = key;
+  const p = state.current;
+  const text = summary(board(), sinceLastTurn(session.log, p), p);
+  if (text) toast(text, 9000, true);
+  for (const [id, counts] of Object.entries(state.knights))
+    if (counts[p]) void scene.burst(id, scene.colour(p), 900);
+}
+
 let logShown = -1;
 function renderLog() {
   // The log follows the board: actions still being animated are not listed yet.
   if (shownLength === logShown) return;
   logShown = shownLength;
-  const items = session.log
-    .slice(0, shownLength)
-    .flatMap((entry) =>
-      entry.events.map((e) =>
-        h(
-          'li',
-          { className: e.type === 'rolled' ? 'turn-start' : e.type },
-          describeEvent(board(), e),
-        ),
-      ),
+  const events = session.log.slice(0, shownLength).flatMap((entry) => entry.events);
+  const items = logLines(board(), events, placeName).map(({ event, text, nodes }) => {
+    const li = h(
+      'li',
+      { className: event.type === 'rolled' ? 'turn-start' : event.type },
+      swatch(event.player),
+      ' ',
+      text,
     );
+    // Hovering an entry points out its nodes on the board.
+    if (nodes.length) {
+      li.classList.add('points');
+      li.onmouseenter = () => scene.showPings(nodes);
+      li.onmouseleave = () => scene.showPings([]);
+    }
+    return li;
+  });
   const log = $('#log');
+  scene.showPings([]);
   log.replaceChildren(...items);
   log.scrollTop = log.scrollHeight;
 }
@@ -441,6 +506,8 @@ function render() {
   renderSelection();
   $('#players').replaceChildren(...playersTable(shown, view, seats));
   renderLog();
+  renderTrails();
+  greet();
   scene.showMarks(interactive() && !animator.busy ? marksFor(selection, options) : NO_MARKS);
 
   $('#curtain').hidden = curtain === null;
@@ -532,10 +599,12 @@ $('#reveal').addEventListener('click', () => {
 function applySettings() {
   animator.speed = ANIMATION_SPEED[settings.animations];
   scene.setLabels(settings.labels);
+  scene.setTrailsVisible(settings.trails);
   $<HTMLSelectElement>('#bot-speed').value = settings.botSpeed;
   $<HTMLSelectElement>('#animations').value = settings.animations;
   $<HTMLInputElement>('#pass-screen').checked = settings.passScreen;
   $<HTMLInputElement>('#labels').checked = settings.labels;
+  $<HTMLInputElement>('#trails').checked = settings.trails;
 }
 
 function updateSettings(change: Partial<Settings>) {
@@ -563,30 +632,40 @@ $<HTMLInputElement>('#pass-screen').addEventListener('change', (e) =>
 $<HTMLInputElement>('#labels').addEventListener('change', (e) =>
   updateSettings({ labels: (e.target as HTMLInputElement).checked }),
 );
+$<HTMLInputElement>('#trails').addEventListener('change', (e) =>
+  updateSettings({ trails: (e.target as HTMLInputElement).checked }),
+);
 
 // --- Camera ----------------------------------------------------------------------
 
-/** The point the Zoom preset looks at: the selection, else the viewer's knights. */
-function focusPoint() {
+/**
+ * Step of the Zoom cycle without a selection: 0 fits all of the viewer's
+ * stacks, 1, 2… zoom on each stack, largest first. Pressing Zoom again while
+ * the camera is still where the last press put it goes to the next step.
+ */
+let zoomStep = 0;
+
+/** The points the Zoom preset looks at: the selection, else the viewer's knights. */
+function focusPoints(): Point[] {
   const id =
     selection.kind === 'stack'
       ? selection.from
       : selection.kind === 'attack'
         ? selection.target
         : null;
-  if (id) return scene.nodePoint(id);
+  if (id) return [scene.nodePoint(id)];
   const p = viewer() ?? session.state.current;
-  const nodes = Object.entries(shown.knights).filter(([, c]) => (c[p] ?? 0) > 0);
-  if (!nodes.length) return { x: 0, z: 0 };
-  const pts = nodes.map(([id]) => scene.nodePoint(id));
-  return {
-    x: pts.reduce((a, b) => a + b.x, 0) / pts.length,
-    z: pts.reduce((a, b) => a + b.z, 0) / pts.length,
-  };
+  const stacks = Object.entries(shown.knights)
+    .filter(([, c]) => (c[p] ?? 0) > 0)
+    .sort(([, a], [, b]) => (b[p] ?? 0) - (a[p] ?? 0))
+    .map(([id]) => scene.nodePoint(id));
+  if (stacks.length < 2) return stacks;
+  zoomStep = scene.rig.current === 'focus' ? (zoomStep + 1) % (stacks.length + 1) : 0;
+  return zoomStep === 0 ? stacks : [stacks[zoomStep - 1]!];
 }
 
 function camera(preset: Preset) {
-  scene.rig.go(preset, preset === 'focus' ? focusPoint() : null);
+  scene.rig.go(preset, preset === 'focus' ? focusPoints() : []);
 }
 
 for (const b of document.querySelectorAll<HTMLButtonElement>('[data-cam]'))
@@ -650,6 +729,10 @@ window.addEventListener('keydown', (e) => {
     updateSettings({ labels: !settings.labels });
     return;
   }
+  if (e.key === 't') {
+    updateSettings({ trails: !settings.trails });
+    return;
+  }
   if (animator.busy) {
     if (e.key === ' ' || e.key === 'Escape') animator.hurry();
     return;
@@ -670,7 +753,7 @@ window.addEventListener('keydown', (e) => {
       if (options.shield) perform({ type: 'placeShield', player, castle: options.shield });
       break;
     case 'z':
-      setSession(undo(session));
+      undoLast();
       break;
     case '+':
     case '=':
@@ -697,6 +780,7 @@ window.addEventListener('keydown', (e) => {
 /** Sizes the 3D view to the part of the window the panel leaves free. */
 function layout() {
   const panel = $('#panel').getBoundingClientRect();
+  scene.rig.insetTop = $('.topbar').getBoundingClientRect().bottom;
   const bottomSheet = panel.left < 20;
   const width = bottomSheet ? window.innerWidth : panel.left - 10;
   const height = bottomSheet ? panel.top + 12 : window.innerHeight;
@@ -716,7 +800,7 @@ scene.renderer.setAnimationLoop((now) => {
 applySettings();
 if (window.matchMedia('(max-width: 760px)').matches) $('#log-box').classList.add('collapsed');
 layout();
-scene.rig.go('overview', null, true);
+scene.rig.go('overview', [], true);
 if (
   settings.passScreen &&
   session.record.actions.length &&
@@ -733,9 +817,11 @@ if (import.meta.env.DEV)
       screenPoint: (id: string) => scene.screenPoint(id),
       session: () => session,
       busy: () => animator.busy,
-      look: (id: string) => scene.rig.go('focus', scene.nodePoint(id), true),
+      look: (id: string) => scene.rig.go('focus', [scene.nodePoint(id)], true),
       moves: () => [...options.moves].map(([from, to]) => [from, [...to]]),
       castles: () => [...options.castles].map(([from, to]) => [from, [...to]]),
       fields: () => [...options.fields].map(([target, from]) => [target, [...from]]),
+      reach: (id: string) =>
+        [...targetsFor(options, id).paths].map(([to, path]) => [to, path.length]),
     },
   });

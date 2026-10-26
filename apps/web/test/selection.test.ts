@@ -7,6 +7,8 @@ import {
   click,
   optionsFor,
   setContribution,
+  carryOver,
+  pathsFrom,
   setCount,
   targetsFor,
   type Selection,
@@ -29,7 +31,9 @@ describe('options', () => {
     expect(options.roll).toBe(false);
     expect(options.movable.get('a')).toBe(3);
     const targets = targetsFor(options, 'a');
-    expect([...targets.moves].sort()).toEqual(['b', 'e']);
+    // Up to 3 steps away; c holds an enemy and start areas cannot be re-entered.
+    expect([...targets.moves].sort()).toEqual(['b', 'e', 'f', 'g']);
+    expect(targets.paths.get('g')).toHaveLength(3);
     expect(targets.fields.size).toBe(0);
     expect(targetsFor(options, 'b').moves.size).toBe(0);
   });
@@ -42,7 +46,10 @@ describe('options', () => {
   it('lists castle attacks and field attack sources', () => {
     const state = scenario({ knights: { d: { 0: 6 }, a: { 0: 1 }, f: { 0: 1 }, b: { 1: 1 } } });
     const options = optionsFor(state);
-    expect([...targetsFor(options, 'd').castles].sort()).toEqual(['hall', 'tower']);
+    // With one movement point only the castles next to d.
+    const oneStep = optionsFor({ ...state, mp: 1 });
+    expect([...targetsFor(oneStep, 'd').castles].sort()).toEqual(['hall', 'tower']);
+    expect(targetsFor(options, 'd').castles.has('keep')).toBe(true);
     // b holds 1 enemy: a or f alone cannot win, together they can.
     expect([...options.fields.get('b')!]).toEqual([
       ['a', 1],
@@ -75,13 +82,49 @@ describe('click', () => {
     expect(clicks(state, ['s1']).selection).toEqual({ kind: 'stack', from: 's1', count: 1 });
   });
 
-  it('moves the chosen count to a legal target', () => {
+  it('moves the chosen count to a legal target and keeps it selected there', () => {
     const options = optionsFor(state);
     const selection = setCount(click(NONE, options, 'a').selection, options, 2);
     expect(click(selection, options, 'e')).toEqual({
-      selection: NONE,
-      action: { type: 'move', player: 0, from: 'a', to: 'e', count: 2 },
+      selection: { kind: 'stack', from: 'e', count: 2 },
+      actions: [{ type: 'move', player: 0, from: 'a', to: 'e', count: 2 }],
     });
+  });
+
+  it('walks several steps in one click', () => {
+    const options = optionsFor(state);
+    const selection = click(NONE, options, 'a').selection;
+    expect(click(selection, options, 'g').actions).toEqual([
+      { type: 'move', player: 0, from: 'a', to: 'e', count: 3 },
+      { type: 'move', player: 0, from: 'e', to: 'f', count: 3 },
+      { type: 'move', player: 0, from: 'f', to: 'g', count: 3 },
+    ]);
+  });
+
+  it('walks to a castle entrance and attacks', () => {
+    const walk = scenario({ knights: { e: { 0: 2 } } });
+    expect(pathsFrom(walk, 'e', 2).get('keep')).toEqual([
+      { type: 'move', player: 0, from: 'e', to: 'f', count: 2 },
+      { type: 'move', player: 0, from: 'f', to: 'g', count: 2 },
+      { type: 'attackCastle', player: 0, castle: 'keep', from: 'g', count: 2 },
+    ]);
+    // One knight is not enough to attack a castle of one sword.
+    expect(pathsFrom(walk, 'e', 1).has('keep')).toBe(false);
+    // Without movement points left on arrival there is no attack.
+    expect(pathsFrom({ ...walk, mp: 2 }, 'e', 2).has('keep')).toBe(false);
+  });
+
+  it('carries a stack selection over while it can still act', () => {
+    const options = optionsFor(state);
+    expect(carryOver({ kind: 'stack', from: 'a', count: 9 }, options)).toEqual({
+      kind: 'stack',
+      from: 'a',
+      count: 3,
+    });
+    expect(carryOver({ kind: 'stack', from: 'c', count: 1 }, options)).toEqual(NONE);
+    expect(
+      carryOver({ kind: 'stack', from: 'a', count: 1 }, optionsFor({ ...state, mp: 0 })),
+    ).toEqual(NONE);
   });
 
   it('clamps the count to 1..movable', () => {
@@ -110,19 +153,21 @@ describe('click', () => {
     selection = click(selection, options, 'b').selection;
     // 1 attacker does not outnumber 2: clicking the target does nothing yet.
     const valid = (a: Parameters<typeof validateAction>[1]) => validateAction(state, a) === null;
-    expect(click(selection, options, 'b', valid).action).toBeUndefined();
+    expect(click(selection, options, 'b', valid).actions).toBeUndefined();
     selection = click(selection, options, 'f').selection;
     expect(selection).toMatchObject({ contributions: { a: 1, f: 2 } });
     const result = click(selection, options, 'b', valid);
-    expect(result.action).toEqual({
-      type: 'attackField',
-      player: 0,
-      target: 'b',
-      contributions: [
-        { from: 'a', count: 1 },
-        { from: 'f', count: 2 },
-      ],
-    });
+    expect(result.actions).toEqual([
+      {
+        type: 'attackField',
+        player: 0,
+        target: 'b',
+        contributions: [
+          { from: 'a', count: 1 },
+          { from: 'f', count: 2 },
+        ],
+      },
+    ]);
     expect(result.selection).toEqual(NONE);
     // Toggling a source again takes it out.
     expect(click(selection, options, 'f').selection).toMatchObject({ contributions: { f: 0 } });
@@ -149,12 +194,9 @@ describe('click', () => {
     const castle = scenario({ knights: { d: { 0: 6 } } });
     const options = optionsFor(castle);
     const selection = setCount(click(NONE, options, 'd').selection, options, 2);
-    expect(click(selection, options, 'tower').action).toEqual({
-      type: 'attackCastle',
-      player: 0,
-      castle: 'tower',
-      from: 'd',
-      count: 2,
+    expect(click(selection, options, 'tower')).toEqual({
+      selection: NONE,
+      actions: [{ type: 'attackCastle', player: 0, castle: 'tower', from: 'd', count: 2 }],
     });
   });
 });

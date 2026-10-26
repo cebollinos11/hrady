@@ -18,7 +18,9 @@ describe('marksFor', () => {
     const { selection } = click(NONE, options, 'a');
     const marks = marksFor(selection, options);
     expect(marks.selected).toBe('a');
-    expect([...marks.moves].sort()).toEqual(['e']);
+    expect([...marks.moves].sort()).toEqual(['e', 'f', 'g']);
+    expect(marks.costs.get('e')).toBe(1);
+    expect(marks.costs.get('g')).toBe(3);
     expect([...marks.fields]).toEqual(['b']);
   });
 

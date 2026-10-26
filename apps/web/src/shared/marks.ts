@@ -13,6 +13,8 @@ export interface Marks {
   sources: ReadonlyMap<string, number>;
   /** Castle that may get a shield now. */
   shield: string | null;
+  /** Movement points it takes the selected stack to reach each target. */
+  costs: ReadonlyMap<string, number>;
 }
 
 export const NO_MARKS: Marks = {
@@ -24,6 +26,7 @@ export const NO_MARKS: Marks = {
   target: null,
   sources: new Map(),
   shield: null,
+  costs: new Map(),
 };
 
 /** Highlights for the current selection, from the legal options. */
@@ -35,8 +38,9 @@ export function marksFor(sel: Selection, opts: Options): Marks {
     shield: opts.shield,
   };
   if (sel.kind === 'stack') {
-    const targets = targetsFor(opts, sel.from);
-    return { ...marks, selected: sel.from, ...targets };
+    const { moves, castles, fields, paths } = targetsFor(opts, sel.from, sel.count);
+    const costs = new Map([...paths].map(([id, path]) => [id, path.length]));
+    return { ...marks, selected: sel.from, moves, castles, fields, costs };
   }
   if (sel.kind === 'attack')
     return {

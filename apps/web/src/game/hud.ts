@@ -1,6 +1,6 @@
 import type { Board } from '@hrady/board';
 import { score, type GameState, type GameView, type PlayerId } from '@hrady/engine';
-import { PLAYER_COLOURS, nodeName, playerName } from '../shared/describe';
+import { PLAYER_COLOURS, placeName, playerName } from '../shared/describe';
 import { SEAT_NAMES, type Seat } from '../shared/seats';
 
 /** Small DOM helpers and the parts of the HUD that only depend on game data. */
@@ -145,5 +145,5 @@ export function describeNode(board: Board, view: GameView, id: string): string {
     return `${node.name} · ${node.value} sword${node.value === 1 ? '' : 's'} · ${holder}${knights}${shield}`;
   }
   if (node.type === 'start') return `Start area ${node.number}${knights}`;
-  return `${nodeName(board, id)}${knights}`;
+  return `${placeName(board, id)}${knights}`;
 }

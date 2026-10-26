@@ -31,7 +31,10 @@ export const MATERIALS = {
   stone: flat('#cfc3ad'),
   darkStone: flat('#9d917c'),
   rock: flat('#7f776a'),
-  roof: flat('#a5442e'),
+  /** Neutral castle roofs: slate, so they never read as a player's colour. */
+  roof: flat('#5f6670'),
+  /** The red of the coats of arms painted on the start scrolls. */
+  crest: flat('#a5442e'),
   gold: flat('#e2b33c', { metalness: 0.4, roughness: 0.4 }),
   coinRim: flat('#b9862a', { metalness: 0.3, roughness: 0.5 }),
   parchment: flat('#efe2c0'),
@@ -207,7 +210,7 @@ export function startArea(number: number, width: number, depth: number): THREE.G
   g.add(label);
   // Little shields along the back edge, one per pip, in rows of three.
   for (let i = 0; i < number; i++) {
-    const shield = new THREE.Mesh(shieldBody, MATERIALS.roof);
+    const shield = new THREE.Mesh(shieldBody, MATERIALS.crest);
     shield.scale.setScalar(0.07);
     shield.rotation.x = -Math.PI / 2;
     const row = Math.floor(i / 3);
@@ -221,7 +224,8 @@ export function startArea(number: number, width: number, depth: number): THREE.G
 /**
  * A castle of `value` swords: rocky base, curtain wall, a keep and one
  * corner tower per sword, a banner on the keep. Faces +z (its entrance).
- * `group.userData.banner` is the banner mesh to recolour for the owner.
+ * `group.userData.banner` and `group.userData.roofs` are the meshes painted in
+ * the owner's colour.
  */
 export function castle(value: number): THREE.Group {
   const g = new THREE.Group();
@@ -256,7 +260,9 @@ export function castle(value: number): THREE.Group {
   const keepH = 0.32 + value * 0.1;
   const keep = shadow(new THREE.Mesh(new THREE.BoxGeometry(0.24, keepH, 0.2), MATERIALS.stone));
   keep.position.set(0, 0.15 + keepH / 2, -0.2);
+  const roofs: THREE.Mesh[] = [];
   const roof = shadow(new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.22, 4), MATERIALS.roof));
+  roofs.push(roof);
   roof.rotation.y = Math.PI / 4;
   roof.position.set(0, 0.15 + keepH + 0.11, -0.2);
 
@@ -273,6 +279,7 @@ export function castle(value: number): THREE.Group {
     );
     tower.position.set(x, 0.15 + h / 2, z);
     const cap = shadow(new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.16, 7), MATERIALS.roof));
+    roofs.push(cap);
     cap.position.set(x, 0.15 + h + 0.08, z);
   }
 
@@ -287,6 +294,7 @@ export function castle(value: number): THREE.Group {
   );
   banner.position.set(0.085, poleTop - 0.06, -0.2);
   g.userData.banner = banner;
+  g.userData.roofs = roofs;
   return g;
 }
 
@@ -403,7 +411,17 @@ export function countBadge(count: number, player: number): THREE.Sprite {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map, depthTest: false }));
   s.scale.setScalar(0.17);
   s.renderOrder = 10;
+  minPixels(s, 22);
   return s;
+}
+
+/**
+ * Keeps a sprite at least `px` CSS pixels tall on screen however far the
+ * camera is (see `BoardScene.render`); its world scale is the size close up.
+ */
+export function minPixels(sprite: THREE.Sprite, px: number) {
+  sprite.userData.minPx = px;
+  sprite.userData.size = { x: sprite.scale.x, y: sprite.scale.y };
 }
 
 const labelTextures = new Map<string, { texture: THREE.CanvasTexture; aspect: number }>();
@@ -430,8 +448,8 @@ function drawSword(ctx: CanvasRenderingContext2D, x: number, y: number, h: numbe
 }
 
 /**
- * A banner sprite with a castle's name and its swords (castle value), or any
- * other text when `swords` is 0. `height` is in world units.
+ * A banner sprite with a castle's name and its value (a sword and the number of
+ * swords), or any other text when `swords` is 0. `height` is in world units.
  */
 export function nameLabel(text: string, swords = 0, height = 0.17): THREE.Sprite {
   const key = `${text}|${swords}`;
@@ -440,23 +458,36 @@ export function nameLabel(text: string, swords = 0, height = 0.17): THREE.Sprite
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d')!;
     const font = '600 44px Georgia, "Times New Roman", serif';
+    const valueFont = '800 46px system-ui, sans-serif';
     ctx.font = font;
-    const swordsWidth = swords ? 14 + swords * 20 : 0;
-    const w = Math.ceil(ctx.measureText(text).width) + 40 + swordsWidth;
+    const textWidth = Math.ceil(ctx.measureText(text).width);
+    ctx.font = valueFont;
+    const valueWidth = swords ? 34 + Math.ceil(ctx.measureText(String(swords)).width) + 22 : 0;
+    const w = textWidth + 36 + valueWidth;
     canvas.width = w;
     canvas.height = 64;
-    ctx.font = font;
-    ctx.fillStyle = 'rgba(122, 28, 22, 0.88)';
+    ctx.fillStyle = 'rgba(40, 30, 22, 0.86)';
     ctx.beginPath();
     ctx.roundRect(2, 6, w - 4, 52, 10);
     ctx.fill();
+    ctx.font = font;
     ctx.fillStyle = '#fff6e0';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, (w - swordsWidth) / 2, 34);
-    ctx.fillStyle = '#f2d27a';
-    for (let i = 0; i < swords; i++)
-      drawSword(ctx, w - swordsWidth + 6 + i * 20, 32, 40, i % 2 ? -0.3 : 0.3);
+    ctx.fillText(text, 18 + textWidth / 2, 34);
+    if (swords) {
+      // The value on a gold tab at the right end.
+      const x = w - valueWidth;
+      ctx.fillStyle = '#e2b33c';
+      ctx.beginPath();
+      ctx.roundRect(x, 6, valueWidth - 2, 52, [0, 10, 10, 0]);
+      ctx.fill();
+      ctx.fillStyle = '#2a1d08';
+      drawSword(ctx, x + 20, 32, 40, 0.35);
+      ctx.font = valueFont;
+      ctx.textAlign = 'left';
+      ctx.fillText(String(swords), x + 36, 35);
+    }
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     entry = { texture, aspect: w / 64 };
