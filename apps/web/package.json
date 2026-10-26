@@ -10,6 +10,7 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
+    "@hrady/ai": "workspace:*",
     "@hrady/board": "workspace:*",
     "@hrady/engine": "workspace:*",
     "three": "^0.186.1"

@@ -8,6 +8,7 @@ import {
   type GameView,
   type PlayerId,
 } from '@hrady/engine';
+import type { BotRequest, BotResponse } from './bot.worker';
 import { NO_MARKS, drawBoard, type Marks } from './board';
 import { PLAYER_COLOURS, describeEvent, nodeName, playerName } from './describe';
 import {
@@ -22,6 +23,15 @@ import {
   type Selection,
 } from './selection';
 import {
+  SEAT_CHOICES,
+  SEAT_NAMES,
+  isBotTurn,
+  observation,
+  seatsFor,
+  viewerFor,
+  type Seat,
+} from './seats';
+import {
   act,
   canUndo,
   exportRecord,
@@ -35,6 +45,7 @@ import {
 } from './session';
 
 const STORAGE_KEY = 'hrady-debug-game';
+const SEATS_KEY = 'hrady-debug-seats';
 
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 const svg = $<SVGSVGElement>('#board');
@@ -47,6 +58,7 @@ interface Replay {
 }
 
 let session = loadSaved() ?? newSession({ players: 3 }, randomSeed());
+let seats = seatsFor(session.state.config.players, loadJson(SEATS_KEY));
 let options = optionsFor(session.state);
 let selection: Selection = NONE;
 let replay: Replay | null = null;
@@ -57,6 +69,14 @@ let underlay: string | null = null;
 
 function randomSeed() {
   return Math.floor(Math.random() * 2 ** 31);
+}
+
+function loadJson(key: string): unknown {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? 'null');
+  } catch {
+    return null;
+  }
 }
 
 function loadSaved(): Session | null {
@@ -72,6 +92,7 @@ function loadSaved(): Session | null {
 function save() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session.record));
+    localStorage.setItem(SEATS_KEY, JSON.stringify(seats));
   } catch {
     // Keeping the game across reloads is a convenience only.
   }
@@ -81,16 +102,23 @@ const board = () => boardContext(session.state.config).board;
 const name = (id: string) => nodeName(board(), id);
 const curtainEnabled = () => $<HTMLInputElement>('#curtain-toggle').checked;
 
+const botTurn = () => isBotTurn(session.state, seats);
+
 function setSession(next: Session) {
-  const before = session.state.current;
+  const before = viewerFor(session.state, seats);
   session = next;
   options = optionsFor(session.state);
   selection = NONE;
   message = '';
-  if (session.state.current !== before && session.state.phase !== 'over' && curtainEnabled())
-    curtain = session.state.current;
+  passScreen(before);
   save();
   render();
+}
+
+/** Covers the board when it is about to show another human's side. */
+function passScreen(before: PlayerId | null) {
+  const viewer = viewerFor(session.state, seats);
+  if (viewer !== null && viewer !== before && curtainEnabled()) curtain = viewer;
 }
 
 function perform(action: Action) {
@@ -115,7 +143,7 @@ function select(next: Selection) {
 const isLegal = (action: Action) => validateAction(session.state, action) === null;
 
 function onNodeClick(id: string) {
-  if (replay || curtain !== null) return;
+  if (replay || curtain !== null || botTurn()) return;
   const result = click(selection, options, id, isLegal);
   if (result.action) perform(result.action);
   else select(result.selection);
@@ -197,6 +225,10 @@ function renderControls() {
     return;
   }
   const { state } = session;
+  if (botTurn()) {
+    controls.replaceChildren(...botControls());
+    return;
+  }
   const items: Node[] = [];
   if (options.roll)
     items.push(button('Roll (R)', () => perform({ type: 'roll', player: state.current })));
@@ -238,6 +270,34 @@ function renderControls() {
     );
   }
   controls.replaceChildren(...out);
+}
+
+function botControls(): Node[] {
+  const player = session.state.current;
+  const step = botSpeed() === null;
+  const status = pending
+    ? 'is thinking…'
+    : step
+      ? 'is waiting for Step.'
+      : curtain !== null
+        ? 'waits for the screen to be shown.'
+        : 'is about to move.';
+  return [
+    h(
+      'p',
+      { className: 'offer' },
+      swatch(player),
+      ` ${playerName(player)} (${SEAT_NAMES[seats[player]!]}) ${status}`,
+    ),
+    h(
+      'div',
+      { className: 'row' },
+      button('Step (N)', requestBotMove, {
+        disabled: !step || pending !== null,
+        title: 'Let the bot make its next move',
+      }),
+    ),
+  ];
 }
 
 function replayControls(r: Replay): Node[] {
@@ -364,8 +424,9 @@ function renderSelection() {
     );
     return;
   }
-  const hint =
-    state.phase === 'roll'
+  const hint = botTurn()
+    ? ''
+    : state.phase === 'roll'
       ? 'Roll the die to place a knight and get your movement points.'
       : state.phase === 'over'
         ? ''
@@ -431,9 +492,9 @@ function renderLog() {
 
 function render() {
   const state = replay ? replay.states[replay.index]! : session.state;
-  const viewer = replay ? replay.viewer : state.phase === 'over' ? null : state.current;
+  const viewer = replay ? replay.viewer : viewerFor(state, seats);
   const view = viewFor(state, viewer);
-  const marks = replay ? NO_MARKS : marksFor(selection, options);
+  const marks = replay || botTurn() ? NO_MARKS : marksFor(selection, options);
   drawBoard(svg, board(), view, marks, {
     labels: $<HTMLInputElement>('#labels').checked,
     underlay: $<HTMLInputElement>('#underlay').checked ? underlay : null,
@@ -454,6 +515,102 @@ function render() {
   if (curtain !== null)
     $('#curtain-text').textContent =
       `${playerName(curtain)} to play. Pass the screen to ${playerName(curtain)}.`;
+  scheduleBot();
+}
+
+// --- Bots ------------------------------------------------------------------
+
+let worker: Worker | null = null;
+/** The bot request being worked on, and how long the game was when it was sent. */
+let pending: { id: number; actions: number } | null = null;
+let nextRequest = 1;
+let botTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Delay before a bot moves in milliseconds, or `null` to wait for Step. */
+function botSpeed(): number | null {
+  const value = $<HTMLSelectElement>('#bot-speed').value;
+  return value === 'step' ? null : Number(value);
+}
+
+/** Starts a bot move after the chosen delay when a bot is to move and nothing is in the way. */
+function scheduleBot() {
+  const delay = botSpeed();
+  if (replay || curtain !== null || !botTurn() || pending || delay === null) {
+    if (botTimer !== null) clearTimeout(botTimer);
+    botTimer = null;
+    return;
+  }
+  botTimer ??= setTimeout(() => {
+    botTimer = null;
+    requestBotMove();
+  }, delay);
+}
+
+function startWorker(): Worker {
+  const w = new Worker(new URL('./bot.worker.ts', import.meta.url), { type: 'module' });
+  w.onmessage = (e: MessageEvent<BotResponse>) => onBotResponse(e.data);
+  w.onerror = (e) => {
+    pending = null;
+    stopBots(`Bot worker failed: ${e.message}`);
+  };
+  return w;
+}
+
+/** Asks the bot to move now. Bots run in a worker so the page stays responsive. */
+function requestBotMove() {
+  if (replay || curtain !== null || !botTurn() || pending) return;
+  const player = session.state.current;
+  worker ??= startWorker();
+  pending = { id: nextRequest++, actions: session.record.actions.length };
+  const request: BotRequest = {
+    id: pending.id,
+    player,
+    level: seats[player] as Exclude<Seat, 'human'>,
+    seed: session.record.seed + player,
+    obs: observation(session, player),
+  };
+  worker.postMessage(request);
+  render();
+}
+
+function onBotResponse(response: BotResponse) {
+  if (!pending || response.id !== pending.id) return;
+  // The game moved on (undo, import, seat change) while the bot was thinking.
+  const stale = pending.actions !== session.record.actions.length || !botTurn();
+  pending = null;
+  if ('error' in response) stopBots(`Bot error: ${response.error}`);
+  else if (stale) render();
+  else perform(response.action);
+}
+
+/** Switches bots to stepping after a failure, so it is not retried in a loop. */
+function stopBots(text: string) {
+  $<HTMLSelectElement>('#bot-speed').value = 'step';
+  showMessage(text);
+}
+
+function renderSeats() {
+  const rows = seats.map((seat, player) => {
+    const select = h('select', {});
+    for (const choice of SEAT_CHOICES)
+      select.append(h('option', { value: choice, selected: choice === seat }, SEAT_NAMES[choice]));
+    select.onchange = () => {
+      const before = viewerFor(session.state, seats);
+      seats[player] = select.value as Seat;
+      selection = NONE;
+      passScreen(before);
+      save();
+      render();
+    };
+    return h('tr', {}, h('td', {}, swatch(player), ` ${playerName(player)}`), h('td', {}, select));
+  });
+  $('#seats').replaceChildren(...rows);
+}
+
+/** Keeps the seat choices for a game with `players` seats. */
+function resetSeats(players: number) {
+  seats = seatsFor(players, seats);
+  renderSeats();
 }
 
 // --- Replay, import and export --------------------------------------------
@@ -490,6 +647,7 @@ $<HTMLInputElement>('#import').addEventListener('change', async (e) => {
     const next = importRecord(await file.text());
     replay = null;
     curtain = null;
+    resetSeats(next.state.config.players);
     setSession(next);
   } catch (err) {
     showMessage(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -505,12 +663,14 @@ $('#new').addEventListener('click', () => {
   const seed = seedText === '' ? randomSeed() : Math.trunc(Number(seedText));
   replay = null;
   curtain = null;
+  resetSeats(players);
   setSession(newSession({ players }, seed));
 });
 $('#reveal').addEventListener('click', () => {
   curtain = null;
   render();
 });
+$('#bot-speed').addEventListener('change', render);
 for (const id of ['#labels', '#underlay', '#underlay-opacity'])
   $(id).addEventListener('input', render);
 $('#curtain-toggle').addEventListener('change', () => {
@@ -552,6 +712,10 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (curtain !== null) return;
+  if (botTurn()) {
+    if (e.key === 'n') requestBotMove();
+    return;
+  }
   const player = session.state.current;
   switch (e.key) {
     case 'Escape':
@@ -600,6 +764,6 @@ if (import.meta.env.DEV) {
 }
 
 $<HTMLSelectElement>('#players').value = String(session.state.config.players);
-if (curtainEnabled() && session.state.phase !== 'over' && session.record.actions.length)
-  curtain = session.state.current;
+if (curtainEnabled() && session.record.actions.length) curtain = viewerFor(session.state, seats);
+renderSeats();
 render();

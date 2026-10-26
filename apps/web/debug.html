@@ -19,6 +19,15 @@
       </label>
       <label>Seed <input id="seed" type="number" placeholder="random" /></label>
       <button id="new">New game</button>
+      <label title="How long bots wait before each move; Step waits for the Step button (N)"
+        >Bots
+        <select id="bot-speed">
+          <option value="150">Fast</option>
+          <option value="600" selected>Normal</option>
+          <option value="1500">Slow</option>
+          <option value="step">Step</option>
+        </select>
+      </label>
       <span class="sep"></span>
       <button id="export" title="Download the game as { config, seed, actions } JSON">
         Export
@@ -45,6 +54,10 @@
         <section id="status"></section>
         <section id="controls"></section>
         <section id="selection"></section>
+        <section>
+          <h2>Seats</h2>
+          <table id="seats"></table>
+        </section>
         <section>
           <h2>Score</h2>
           <table id="scores"></table>

@@ -167,9 +167,18 @@ main {
   background: #3a7a30;
 }
 
-#scores {
+#scores,
+#seats {
   width: 100%;
   border-collapse: collapse;
+}
+
+#seats td {
+  padding: 2px 4px;
+}
+
+#seats td:last-child {
+  text-align: right;
 }
 
 #scores th,

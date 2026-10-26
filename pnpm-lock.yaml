@@ -47,6 +47,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@hrady/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@hrady/board':
         specifier: workspace:*
         version: link:../../packages/board
