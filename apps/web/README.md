@@ -34,14 +34,28 @@ the real engine. It exists to check the rules and the traced graph before the
   steps through it from its seed (<kbd>←</kbd>/<kbd>→</kbd>, or click a log
   line), seen as a spectator or any player; _Continue from here_ drops the
   later actions.
-- The current game is kept in `localStorage` across reloads.
+- **Bots.** Each seat in the _Seats_ panel is Human or an Easy, Medium or
+  Hard bot (`@hrady/ai`: random, heuristic and Monte-Carlo). Bots move by
+  themselves after the delay chosen under _Bots_ (Fast/Normal/Slow), or one
+  action at a time with _Step_ (<kbd>N</kbd>). They run in a Web Worker
+  (`bot.worker.ts`) so the page stays responsive while the hard bot thinks
+  (about 1.5 s per turn plan), and each bot only gets `viewFor` its seat plus
+  the shields removed so far (public, from the log). Clicks and keys are
+  ignored on a bot's turn; seats can be switched at any time, also mid-game.
+- **Whose view.** The board shows the player to move if they are human,
+  otherwise the next human in turn order, so the bots' moves are watched
+  from that side; with only bots it is a spectator view. _Pass screen_
+  covers the board only when that viewer changes between two humans.
+- The current game and the seat choices are kept in `localStorage` across
+  reloads.
 - **Photo** (dev server only) draws `docs/board/board-full.jpg` under the
   graph. The import sits behind `import.meta.env.DEV`, so production builds
   never contain the photo.
 
 Keys: <kbd>R</kbd> roll, <kbd>E</kbd> end turn, <kbd>Enter</kbd> confirm an
-attack, <kbd>Esc</kbd> cancel.
+attack, <kbd>Esc</kbd> cancel, <kbd>N</kbd> next bot action.
 
 The UI state is plain modules with unit tests in `test/`: `session.ts` (log,
-undo, export/import), `selection.ts` (clicks, counts, attack contributions)
-and `describe.ts` (log text). `main.ts` and `board.ts` are the DOM/SVG layer.
+undo, export/import), `selection.ts` (clicks, counts, attack contributions),
+`seats.ts` (who plays which seat, whose view is shown, what a bot sees) and
+`describe.ts` (log text). `main.ts` and `board.ts` are the DOM/SVG layer.

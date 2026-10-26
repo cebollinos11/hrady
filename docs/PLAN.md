@@ -131,7 +131,9 @@ graph before investing in 3D.
    shields, running in a Web Worker with a time budget.
 Difficulty levels map to these. Bot-vs-bot tournament script to tune.
 **Done when:** heuristic bot reliably beats random; hard bot beats
-heuristic.
+heuristic. *(Implemented in [`packages/ai`](../packages/ai/README.md): Easy =
+random, Medium = heuristic planner, Hard = Monte-Carlo over turn plans;
+tournament numbers and design decisions are in its README.)*
 
 ### Stage 5 — 3D client
 Replace the debug view with three.js: board, castles, knights, shields,
