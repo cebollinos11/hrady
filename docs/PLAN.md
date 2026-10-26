@@ -8,21 +8,21 @@ Cloudflare Workers + Durable Objects (free tier).
 
 ## 1. Rules summary (digital form)
 
-Source: [`rules.md`](rules.md). Items marked **(I)** are interpretations where
-the rulebook is silent or ambiguous — see §5, they need confirming.
+Source: [`rules.md`](rules.md). Where the rulebook is silent or ambiguous,
+the decisions in §5 apply.
 
 **Components**
 - Board graph: 6 start areas (numbered 1–6), ~100 path markers, 18 castles
   with value 1–3 (swords), connected by dotted lines.
-- Per player: 21 knight figures (12×1, 5×2, 4×5 = 42 knights of value) and
-  6 face-down defender shields valued 0, 0, 0, 1, 2, 3.
+- Per player: unlimited knights (shown as 1/2/5 figures) and 6 face-down
+  defender shields valued 0, 0, 0, 1, 2, 3.
 - 3–5 players, clockwise turn order.
 
 **Turn**
 1. **Roll & place** — roll d6, place 1 knight from supply on start area *N*.
-   Skipped if you already have a knight there (or your supply is empty).
-2. **Move** — 3 movement points (MP). 1 MP moves any stack (or a chosen
-   subset of a stack **(I)**) one step along a connection. Splitting points
+   Skipped if you already have a knight there. Supply is unlimited.
+2. **Move** — 3 movement points (MP). 1 MP moves any stack (or any subset of
+   a stack) one step along a connection. Splitting points
    across stacks is free.
 3. **Field battle** — a path marker holds only one colour. Enemy stacks block
    movement. You may enter an enemy-held marker only if the knights you bring
@@ -39,14 +39,15 @@ the rulebook is silent or ambiguous — see §5, they need confirming.
    either way.
 6. Start areas: multi-colour allowed, no battles, never re-entered.
 7. A held castle must always contain ≥1 knight; extras move in/out freely.
+   The owner may move through their own castle as a path node.
 
 **End & scoring** — game ends immediately when the 17th castle is taken from
 neutral (only one never-conquered castle left). Score = sum of swords of held
 castles; the last neutral castle's value goes to the player who triggered the
 end. Tiebreak: most knights on the board.
 
-**Optional variants** (toggle in lobby): 3 Kings, Quick 6, Pillaging,
-Attrition, My Shield My Choice.
+**Optional variants** (3 Kings, Quick 6, Pillaging, Attrition, My Shield My
+Choice): **not at launch**; engine config keeps room for them.
 
 ---
 
@@ -117,7 +118,7 @@ property test: random legal games always terminate with consistent state.
 violations.
 
 ### Stage 3 — 2D debug client, local hotseat
-Quick SVG view over the board photo driving the real engine: hotseat for
+Quick SVG view of the board graph (photo as an optional dev-only underlay) driving the real engine: hotseat for
 3–5 humans, action log, replay from seed. Purpose: validate rules and the
 graph before investing in 3D.
 **Done when:** a full human game can be played end to end.
@@ -142,9 +143,9 @@ mobile.
 
 ### Stage 6 — Online multiplayer
 Worker routes (`/api/rooms`, `/ws/:room`), `GameRoom` DO with hibernating
-WebSockets, lobby (create/join by code, pick colour, add AI seats, choose
-variants), server-authoritative turns, hidden-info redaction, reconnect,
-spectators, turn timer + AFK→bot takeover, room expiry via alarms.
+WebSockets, lobby (create/join by code, pick colour, add AI seats driven by
+the host browser, server-authoritative turns, hidden-info redaction, reconnect,
+spectators, AI-host hand-off, turn timer + AFK→bot takeover, room expiry via alarms.
 Stay within free-tier limits (100k requests/day, small messages, no
 polling).
 **Done when:** 3–5 browsers play a full game with AI seats mixed in, survive
@@ -152,42 +153,50 @@ refreshes/disconnects.
 
 ### Stage 7 — Polish
 Sounds, animations for battles/reveals, tutorial/rules overlay, i18n
-(EN/CS?), accessibility (colour-blind-safe player colours + patterns),
+accessibility (colour-blind-safe player colours + patterns),
 end-game summary, save/resume local games, game replays.
 
 ---
 
 ## 4. Risks
 
-- **Board graph accuracy** — the repo photo is 416×600; markers and dotted
-  lines are hard to resolve. A higher-resolution photo makes Stage 1 much
-  safer.
-- **Artwork/IP** — the board photo is Jumbo's art. Fine as a private
-  reference; for a public deployment the 3D board should use original
-  procedural/low-poly terrain instead.
-- **AI on the server** — free-tier Workers/DOs have tight CPU budgets per
-  request, so heavy search should run in a browser Web Worker; server-side
-  bots should be the cheap heuristic one.
+- **Board graph accuracy** — trace from `board/board-full.jpg`; the owner
+  verifies the result in the map editor overlay.
+- **Artwork/IP** — the board photo is the publisher's art and the site is
+  public, so the 3D board must be original (procedural/low-poly terrain,
+  river, own castle models). Castle names from the Czech edition are fine.
+- **AI host** — AI seats in online games run in the host's browser (Web
+  Worker). Needs a host hand-off when the host leaves.
 
 ---
 
-## 5. Open rule questions (proposed defaults)
+## 5. Decisions (confirmed with owner, 2026-10-26)
 
-1. Can a stack be **split** when moving (move 3 of 5 knights)? → *Yes.*
-2. Field attack with too few knights — illegal, or attacker loses? → *Illegal*
-   (attack only allowed when you outnumber; all info is visible).
-3. After winning a field battle, do the attackers end in the conquered
-   marker and may they keep moving with remaining MP? → *Yes, they occupy it
-   and may continue.*
-4. Can knights **pass through** a castle (own castle as a shortcut)? →
-   *Only if the board shows the castle linked to more than one marker; moving
-   in/out costs MP normally.*
-5. If the attacker of an enemy castle **loses**, are all knights on that
-   marker lost, or only those committed? → *All on the marker (as written).*
-6. "Conquering the next-to-last castle" means the 17th castle ever taken
-   from neutral. → *Yes.*
-7. Supply cap: 42 knights of value, or 12 placements before needing to
-   "exchange" figures? → *Count-based: 42 knights, figures are only visual.*
-8. When a player has used all 6 shields, castles simply get none. → *Yes.*
-9. Is the 1 MP to attack a castle the same MP that moves the knight in? →
-   *Yes — one MP total for attack + entering.*
+| Topic | Decision |
+|---|---|
+| Board reference | `board/board-full.jpg` (876×1200, Czech *Hrady* edition with castle names) and `board/board-closeup.jpg`. Old `map.jpg` is superseded. |
+| Deployment | **Public.** Do not ship the board photo as a texture; build an original low-poly 3D board. Photo is only used by the map editor. |
+| Splitting stacks | **Allowed** — any number of knights may be split off and moved. |
+| Field attack without a majority | **Not allowed** (no "lose" outcome; the move is simply illegal). |
+| Passing through own castle | **Allowed** — a held castle can be used as a path node by its owner (each step still costs 1 MP). Enemy/neutral castles block. |
+| Knight supply | **Unlimited** — no 42-knight / figure-count cap; 1/2/5 figures are purely visual. |
+| House rules | None. Rules as in `rules.md`. |
+| Player count | **3–5 only.** |
+| AI in online games | Runs in the **host's browser** (room creator); the DO only validates. If the host disconnects, hand AI duty to another connected human. |
+| Accounts | **Room codes + display names** only. No login, ranking or history. |
+| Front-end | **Plain three.js** + lightweight DOM/HTML overlay (no React). |
+| Language | **English only.** |
+| Variants | **None** at launch (keep engine config extensible). |
+| Mobile | Not prioritised; keep layout usable but desktop first. |
+
+### Remaining rule assumptions (default unless told otherwise)
+- After winning a field battle the attackers occupy the marker and may keep
+  moving with remaining MP.
+- A failed enemy-castle attack loses **all** knights on the attacking marker.
+- The 17th castle ever taken from neutral ends the game; its taker also
+  scores the last neutral castle.
+- A player who has used all 6 shields places none.
+- The castle attack MP also moves the entering knight(s) in.
+- Board details to resolve in Stage 1: the small white arrowheads printed
+  next to some paths (one-way? castle entry?) and which marker(s) give access
+  to each castle.
