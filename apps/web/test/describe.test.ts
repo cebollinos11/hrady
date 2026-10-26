@@ -1,7 +1,7 @@
 import { parseBoard } from '@hrady/board';
 import { describe, expect, it } from 'vitest';
 import { testBoardData } from '../../../packages/engine/test/fixtures';
-import { describeEvent, nodeName, playerName } from '../src/debug/describe';
+import { describeEvent, nodeName, playerName } from '../src/shared/describe';
 
 const board = parseBoard(testBoardData());
 

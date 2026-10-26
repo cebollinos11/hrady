@@ -10,7 +10,7 @@ import {
   setCount,
   targetsFor,
   type Selection,
-} from '../src/debug/selection';
+} from '../src/shared/selection';
 
 /** Clicks the nodes in turn, returning the last result. */
 function clicks(state: GameState, nodes: string[], start: Selection = NONE) {

@@ -8,9 +8,9 @@ import {
   type GameView,
   type PlayerId,
 } from '@hrady/engine';
-import type { BotRequest, BotResponse } from './bot.worker';
+import type { BotRequest, BotResponse } from '../shared/bot.worker';
 import { NO_MARKS, drawBoard, type Marks } from './board';
-import { PLAYER_COLOURS, describeEvent, nodeName, playerName } from './describe';
+import { PLAYER_COLOURS, describeEvent, nodeName, playerName } from '../shared/describe';
 import {
   NONE,
   attackAction,
@@ -21,7 +21,7 @@ import {
   targetsFor,
   type Options,
   type Selection,
-} from './selection';
+} from '../shared/selection';
 import {
   SEAT_CHOICES,
   SEAT_NAMES,
@@ -30,7 +30,7 @@ import {
   seatsFor,
   viewerFor,
   type Seat,
-} from './seats';
+} from '../shared/seats';
 import {
   act,
   canUndo,
@@ -42,7 +42,7 @@ import {
   undo,
   undoTurn,
   type Session,
-} from './session';
+} from '../shared/session';
 
 const STORAGE_KEY = 'hrady-debug-game';
 const SEATS_KEY = 'hrady-debug-seats';
@@ -547,7 +547,7 @@ function scheduleBot() {
 }
 
 function startWorker(): Worker {
-  const w = new Worker(new URL('./bot.worker.ts', import.meta.url), { type: 'module' });
+  const w = new Worker(new URL('../shared/bot.worker.ts', import.meta.url), { type: 'module' });
   w.onmessage = (e: MessageEvent<BotResponse>) => onBotResponse(e.data);
   w.onerror = (e) => {
     pending = null;

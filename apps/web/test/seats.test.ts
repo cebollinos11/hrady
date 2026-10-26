@@ -1,8 +1,8 @@
 import { apply, viewFor } from '@hrady/engine';
 import { describe, expect, it } from 'vitest';
 import { scenario, testBoardData } from '../../../packages/engine/test/fixtures';
-import { isBotTurn, observation, seatsFor, viewerFor } from '../src/debug/seats';
-import { act, newSession } from '../src/debug/session';
+import { isBotTurn, observation, seatsFor, viewerFor } from '../src/shared/seats';
+import { act, newSession } from '../src/shared/session';
 
 describe('seats', () => {
   it('keep saved choices that fit and make the rest human', () => {

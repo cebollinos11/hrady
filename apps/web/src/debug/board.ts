@@ -1,6 +1,6 @@
 import type { Board, BoardNode } from '@hrady/board';
 import type { GameView } from '@hrady/engine';
-import { PLAYER_COLOURS } from './describe';
+import { PLAYER_COLOURS } from '../shared/describe';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** Fallback drawing size when the board has no reference image. */
