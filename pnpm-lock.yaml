@@ -50,6 +50,9 @@ importers:
       '@hrady/board':
         specifier: workspace:*
         version: link:../../packages/board
+      '@hrady/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
       three:
         specifier: ^0.186.1
         version: 0.186.1
