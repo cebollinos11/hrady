@@ -6,7 +6,7 @@ Reference material for the board game **Hrady** — also published as
 
 ## Contents
 
-- [`docs/board/board-full.jpg`](docs/board/board-full.jpg) — full board, Czech *Hrady* edition (main reference)
+- [`docs/board/board-full.jpg`](docs/board/board-full.jpg) — full board, Czech _Hrady_ edition (main reference)
 - [`docs/board/board-closeup.jpg`](docs/board/board-closeup.jpg) — close-up of the board
 - [`docs/map.jpg`](docs/map.jpg) — older low-res photo of the board
 - [`docs/KICKOFF_PROMPT.md`](docs/KICKOFF_PROMPT.md) — prompt to start development in a new session
