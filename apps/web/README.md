@@ -96,6 +96,12 @@ running animations; ⚙ _Animations_ makes them faster or turns them off.
   aspect ratio (`WIDEN` in `layout.ts`), giving the river and the paths more
   room, inside a margin (`MARGIN`) so pieces and paths near the edge stay on
   the board. Only the 3D layout changes; the graph and the rules don't.
+- **Paths behind the scrolls.** On the board the outer path passes just
+  behind each start scroll. `clearStarts` (in `layout.ts`) pushes the two
+  markers of any marker-to-marker connection that would run under a scroll
+  away from it (outwards when it runs straight through), so the path clears
+  the scroll by `START_CLEARANCE`. It works from the geometry only, without
+  node ids.
 - **River course.** The graph has no river, so `RHINE` is a hand-made
   centreline (normalised coordinates, independent of node ids). Nodes that
   fall into it become islets; connections over water are dotted on the
