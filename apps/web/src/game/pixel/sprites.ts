@@ -72,18 +72,21 @@ export function outline(canvas: HTMLCanvasElement, colour = INK) {
   ctx.putImageData(out, 0, 0);
 }
 
-/** A sprite drawn by `draw` in a `w` × `h` canvas with room for the outline all round. */
+/**
+ * A sprite drawn by `draw` in a `w` × `h` canvas with room for the outline all
+ * round. A `line` of `null` leaves the outline out.
+ */
 export function build(
   w: number,
   h: number,
   anchor: [number, number],
   draw: (ctx: Ctx) => void,
-  line = INK,
+  line: string | null = INK,
 ): Sprite {
   const [canvas, ctx] = canvasOf(w + 2, h + 2);
   ctx.translate(1, 1);
   draw(ctx);
-  outline(canvas, line);
+  if (line !== null) outline(canvas, line);
   return { canvas, ox: anchor[0] + 1, oy: anchor[1] + 1 };
 }
 

@@ -103,10 +103,6 @@ function buildTerrain(layout: Layout): Terrain {
       ctx.fillRect(a.x - hx + 2, a.y - hz + 1, 2 * hx - 4, 2 * hz - 2);
       const text = String(n.node.number);
       drawText(ctx, text, a.x - Math.floor(textWidth(text) / 2), a.y - 2, '#7a1c16');
-    } else {
-      ellipse(ctx, a.x, a.y + 2, 16, 16, '#4a4036');
-      ellipse(ctx, a.x, a.y + 1, 16, 16, '#9d917c');
-      ellipse(ctx, a.x, a.y, 14, 14, '#b3a78f');
     }
   }
   return { canvas, left, top, nx, nz, x0, z0, levels, water, trees: placeTrees(layout, grid) };
