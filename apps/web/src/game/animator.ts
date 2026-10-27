@@ -1,6 +1,6 @@
 import { playerName } from '../shared/describe';
 import type { DieView } from './dieView';
-import type { BoardScene } from './scene';
+import type { BoardView } from './boardView';
 import { countsAfter, departed, stepDuration, type Knights, type Step } from './steps';
 
 /** One applied action to show: the knights shown before it, its steps and the final picture. */
@@ -26,7 +26,7 @@ export class Animator {
   private idle: (() => void)[] = [];
 
   constructor(
-    private readonly scene: BoardScene,
+    private readonly scene: BoardView,
     private readonly die: DieView,
   ) {}
 

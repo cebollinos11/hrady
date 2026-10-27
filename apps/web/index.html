@@ -9,6 +9,7 @@
   </head>
   <body>
     <canvas id="scene"></canvas>
+    <canvas id="iso" hidden></canvas>
 
     <header class="topbar">
       <strong class="brand">Hrady</strong>
@@ -25,6 +26,12 @@
           Zoom
         </button>
       </span>
+      <button
+        id="view-toggle"
+        title="Switch between the 3D board and the isometric pixel-art board (V)"
+      >
+        3D
+      </button>
       <button id="settings-button" title="Settings" aria-expanded="false">⚙</button>
     </header>
 
@@ -48,14 +55,22 @@
       <label title="Cover the board when it passes between two people at this screen"
         ><input id="pass-screen" type="checkbox" /> Pass screen</label
       >
+      <label
+        >Board view
+        <select id="view">
+          <option value="3d">3D</option>
+          <option value="iso">Isometric pixel art</option>
+        </select>
+      </label>
       <label><input id="labels" type="checkbox" /> Castle names (L)</label>
       <label title="Arrows for what the other players did since your last turn"
         ><input id="trails" type="checkbox" /> Last moves (T)</label
       >
       <p class="help">
-        Drag to pan, right-drag or two fingers to rotate, wheel or pinch to zoom. Click one of your
-        stacks, then a highlighted target. Hover a log line to see where it happened. Keys: R roll,
-        E end turn, S shield, Z undo, Esc cancel, 1–3 camera (press 3 again for your next stack).
+        Drag to pan, right-drag or two fingers to rotate (3D only), wheel or pinch to zoom. Click
+        one of your stacks, then a highlighted target. Hover a log line to see where it happened.
+        Keys: R roll, E end turn, S shield, Z undo, Esc cancel, 1–3 camera (press 3 again for your
+        next stack), V 3D / pixel view.
       </p>
       <p><a href="debug.html">2D debug client →</a></p>
     </div>

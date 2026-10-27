@@ -39,6 +39,8 @@ import {
   type Settings,
 } from './game/saved';
 import { BoardScene } from './game/scene';
+import { IsoScene } from './game/iso';
+import { ViewSwitch } from './game/boardView';
 import { sinceLastTurn, summary, trailsOf } from './game/recent';
 import { planSteps } from './game/steps';
 import type { Preset } from './game/camera';
@@ -131,7 +133,9 @@ function randomSeed() {
 }
 
 const board = () => boardContext(session.state.config).board;
-const scene = new BoardScene($<HTMLCanvasElement>('#scene'), board());
+const scene3d = new BoardScene($<HTMLCanvasElement>('#scene'), board());
+const sceneIso = new IsoScene($<HTMLCanvasElement>('#iso'), board(), scene3d.layout);
+const scene = new ViewSwitch({ '3d': scene3d, iso: sceneIso }, settings.view);
 const die = new DieView($<HTMLCanvasElement>('#die'));
 const animator = new Animator(scene, die);
 animator.onIdle = () => render();
@@ -1071,8 +1075,22 @@ setInterval(() => {
 
 // --- Settings ------------------------------------------------------------------
 
+/** Views whose camera has been put in place; a view shows the whole board when first seen. */
+const seenViews = new Set<string>([settings.view]);
+
+/** The other renderer is on: size it, frame the board the first time and redraw the game. */
+function switchedView() {
+  layout();
+  if (!seenViews.has(scene.mode)) {
+    seenViews.add(scene.mode);
+    scene.rig.go('overview', [], true);
+  }
+  snap();
+}
+
 function applySettings() {
   animator.speed = ANIMATION_SPEED[settings.animations];
+  if (scene.set(settings.view)) switchedView();
   scene.setLabels(settings.labels);
   scene.setTrailsVisible(settings.trails);
   $<HTMLSelectElement>('#bot-speed').value = settings.botSpeed;
@@ -1080,6 +1098,8 @@ function applySettings() {
   $<HTMLInputElement>('#pass-screen').checked = settings.passScreen;
   $<HTMLInputElement>('#labels').checked = settings.labels;
   $<HTMLInputElement>('#trails').checked = settings.trails;
+  $<HTMLSelectElement>('#view').value = settings.view;
+  $('#view-toggle').textContent = settings.view === '3d' ? '3D' : 'Pixel';
 }
 
 function updateSettings(change: Partial<Settings>) {
@@ -1110,6 +1130,11 @@ $<HTMLInputElement>('#labels').addEventListener('change', (e) =>
 $<HTMLInputElement>('#trails').addEventListener('change', (e) =>
   updateSettings({ trails: (e.target as HTMLInputElement).checked }),
 );
+const toggleView = () => updateSettings({ view: settings.view === '3d' ? 'iso' : '3d' });
+$<HTMLSelectElement>('#view').addEventListener('change', (e) =>
+  updateSettings({ view: (e.target as HTMLSelectElement).value as Settings['view'] }),
+);
+$('#view-toggle').addEventListener('click', toggleView);
 
 // --- Camera ----------------------------------------------------------------------
 
@@ -1148,44 +1173,46 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('[data-cam]'))
 
 // --- Pointer and keys ----------------------------------------------------------------
 
-const canvas = scene.canvas;
+const canvases = [scene3d.canvas, sceneIso.canvas];
 let down: { x: number; y: number; t: number; id: number } | null = null;
 
-canvas.addEventListener('pointerdown', (e) => {
-  down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
-  $('#settings').hidden = true;
-});
-canvas.addEventListener('pointerup', (e) => {
-  const d = down;
-  down = null;
-  if (!d || d.id !== e.pointerId || e.button > 0) return;
-  // A drag pans the camera; only a short, still press is a click.
-  if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8 || performance.now() - d.t > 700) return;
-  const id = scene.pick(e.clientX, e.clientY);
-  if (id) onNodeClick(id);
-  else if (interactive() && selection.kind !== 'none') select(NONE);
-});
-canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+for (const canvas of canvases) {
+  canvas.addEventListener('pointerdown', (e) => {
+    down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+    $('#settings').hidden = true;
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    const d = down;
+    down = null;
+    if (!d || d.id !== e.pointerId || e.button > 0) return;
+    // A drag pans the camera; only a short, still press is a click.
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8 || performance.now() - d.t > 700) return;
+    const id = scene.pick(e.clientX, e.clientY);
+    if (id) onNodeClick(id);
+    else if (interactive() && selection.kind !== 'none') select(NONE);
+  });
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-const tooltip = $('#tooltip');
-let hovered: string | null = null;
-canvas.addEventListener('pointermove', (e) => {
-  if (e.pointerType !== 'mouse' || e.buttons) {
-    tooltip.hidden = true;
-    return;
-  }
-  hovered = scene.pick(e.clientX, e.clientY);
-  canvas.style.cursor = hovered && interactive() ? 'pointer' : '';
-  if (!hovered) {
-    tooltip.hidden = true;
-    return;
-  }
-  tooltip.textContent = describeNode(board(), viewFor(shown, viewer()), hovered);
-  tooltip.style.left = `${e.clientX}px`;
-  tooltip.style.top = `${e.clientY}px`;
-  tooltip.hidden = false;
-});
-canvas.addEventListener('pointerleave', () => (tooltip.hidden = true));
+  const tooltip = $('#tooltip');
+  let hovered: string | null = null;
+  canvas.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse' || e.buttons) {
+      tooltip.hidden = true;
+      return;
+    }
+    hovered = scene.pick(e.clientX, e.clientY);
+    canvas.style.cursor = hovered && interactive() ? 'pointer' : '';
+    if (!hovered) {
+      tooltip.hidden = true;
+      return;
+    }
+    tooltip.textContent = describeNode(board(), viewFor(shown, viewer()), hovered);
+    tooltip.style.left = `${e.clientX}px`;
+    tooltip.style.top = `${e.clientY}px`;
+    tooltip.hidden = false;
+  });
+  canvas.addEventListener('pointerleave', () => (tooltip.hidden = true));
+}
 
 window.addEventListener('keydown', (e) => {
   const target = e.target as HTMLElement;
@@ -1195,6 +1222,10 @@ window.addEventListener('keydown', (e) => {
   }
   if (target.tagName === 'SELECT' || e.ctrlKey || e.metaKey || e.altKey) return;
   if (!$('#setup').hidden || !$('#online').hidden) return;
+  if (e.key === 'v') {
+    toggleView();
+    return;
+  }
   const cams: Record<string, Preset> = { '1': 'overview', '2': 'table', '3': 'focus' };
   if (e.key in cams) {
     camera(cams[e.key]!);
@@ -1252,15 +1283,17 @@ window.addEventListener('keydown', (e) => {
 
 // --- Layout and frame loop ---------------------------------------------------------
 
-/** Sizes the 3D view to the part of the window the panel leaves free. */
+/** Sizes the board view to the part of the window the panel leaves free. */
 function layout() {
   const panel = $('#panel').getBoundingClientRect();
   scene.rig.insetTop = $('.topbar').getBoundingClientRect().bottom;
   const bottomSheet = panel.left < 20;
   const width = bottomSheet ? window.innerWidth : panel.left - 10;
   const height = bottomSheet ? panel.top + 12 : window.innerHeight;
-  canvas.style.width = `${Math.max(1, width)}px`;
-  canvas.style.height = `${Math.max(1, height)}px`;
+  for (const canvas of canvases) {
+    canvas.style.width = `${Math.max(1, width)}px`;
+    canvas.style.height = `${Math.max(1, height)}px`;
+  }
   scene.resize();
 }
 
@@ -1270,7 +1303,7 @@ window.addEventListener('resize', layout);
 /** Draw every n-th frame only; browser tests turn this up to save CPU. */
 let drawEvery = 1;
 let frame = 0;
-scene.renderer.setAnimationLoop((now) => {
+scene3d.renderer.setAnimationLoop((now) => {
   scene.render(now, frame++ % drawEvery === 0);
   die.update(now);
 });

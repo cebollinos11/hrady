@@ -22,7 +22,8 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-#scene {
+#scene,
+#iso {
   position: fixed;
   top: 0;
   left: 0;
@@ -31,6 +32,15 @@ body {
   height: 100%;
   touch-action: none;
   outline: none;
+}
+
+canvas[hidden] {
+  display: none;
+}
+
+#iso {
+  image-rendering: pixelated;
+  cursor: grab;
 }
 
 button,

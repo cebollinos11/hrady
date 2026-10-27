@@ -37,6 +37,14 @@ describe('settings', () => {
       passScreen: false,
     });
   });
+
+  it('remembers the board view and ignores unknown ones', () => {
+    const store = memory();
+    save(store, SETTINGS_KEY, { view: 'iso' });
+    expect(loadSettings(store).view).toBe('iso');
+    save(store, SETTINGS_KEY, { view: 'vr' });
+    expect(loadSettings(store).view).toBe('3d');
+  });
 });
 
 describe('saved game', () => {
