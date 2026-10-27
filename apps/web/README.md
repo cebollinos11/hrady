@@ -1,27 +1,22 @@
 # @hrady/web
 
-The browser client. `index.html` is the three.js game; `debug.html` is the 2D
+The browser client. `index.html` is the pixel-art game; `debug.html` is the 2D
 debug client from Stage 3 (also reachable as `index.html?debug` and from the
 ⚙ menu).
 
 ```sh
-pnpm dev:web   # http://localhost:5173/ (3D), http://localhost:5173/debug.html (2D)
+pnpm dev:web   # http://localhost:5173/ (game), http://localhost:5173/debug.html (2D)
 ```
 
-## 3D client
+## Game client
 
 A local game for 3–5 players, each seat Human or an Easy, Medium or Hard bot,
 on an original low-poly board built from the graph in `@hrady/board`. The
-board photo is never used or shipped by the 3D client.
+board photo is never used or shipped by the game client.
 
-- **Three views of the board**: the 3D scene (`scene.ts`) and two pixel-art
-  ones, isometric in the style of the old Civilization / Age of Empires games
-  and top down like the 16-bit adventure games. The _3D_ / _Isometric_ /
-  _Top down_ button and `V` cycle through them; the Board view setting picks
-  one (remembered). All implement `BoardView` (`boardView.ts`) and the
-  `ViewSwitch` forwards the game client's calls to the one on show. The
-  pixel views are one `PixelScene` (`pixelScene.ts`) with a `Look`
-  (`look.ts`; `isoLook.ts`, `topLook.ts`) that says how the world is
+- **Top-down pixel-art board** in the style of the 16-bit adventure games,
+  drawn by `PixelScene` (`pixelScene.ts`) behind the `BoardView` interface
+  (`boardView.ts`). A `Look` (`look.ts`, `topLook.ts`) says how the world is
   projected and the ground and sprites (`pixel/`) are drawn. It draws into a
   small 2D canvas the browser scales up without smoothing: the ground is
   tiles drawn once, castles, knights and trees are sprites sorted back to
@@ -72,17 +67,13 @@ board photo is never used or shipped by the 3D client.
 - **Log**: path markers are named after their castle ("gate of Kajetce" for
   an entrance, else "road by" the closest castle, `placeName`), walks are one
   line, and hovering a line rings its nodes on the board.
-- **Camera**: drag (one finger) pans, right-drag (two fingers) rotates, wheel
-  (pinch) zooms. The target stays over the board and the camera above it.
-  Presets: _Board_ (<kbd>1</kbd>, whole board from above) and _Table_
-  (<kbd>2</kbd>, seen from the near edge) look from the same side, so the
-  river runs left to right in a landscape window and top to bottom in a
-  portrait one; both are fitted to the free part of the view by projecting
-  the board's corners. _Zoom_ (<kbd>3</kbd>) looks at the selection, or fits
+- **Camera**: drag (one finger) pans, wheel (pinch) zooms. Presets: _Board_
+  (<kbd>1</kbd>, the whole board, fitted to the free part of the view) and
+  _Table_ (<kbd>2</kbd>, closer in). _Zoom_ (<kbd>3</kbd>) looks at the selection, or fits
   all your stacks; pressing it again visits each stack, largest first.
   <kbd>L</kbd> toggles castle names.
-- **Layout**: a side panel on desktop, a bottom sheet under 760 px; the 3D
-  view takes the rest of the window.
+- **Layout**: a side panel on desktop, a bottom sheet under 760 px; the board
+  takes the rest of the window.
 
 ### Online play
 
@@ -165,7 +156,7 @@ shield values.
 with or without a battle, siege, enter, shield, …) and `countsAfter` gives
 the knights the board shows after each step, so a moving group can leave its
 node, tween along an arc and arrive (tested over whole games to end on the
-engine's state). `animator.ts` plays the steps one action at a time: a 3D die
+engine's state). `animator.ts` plays the steps one action at a time: a die
 in the panel tumbles onto the rolled face (`dice.ts`), groups hop between
 nodes, field battles and conquests flash in the winner's colour, a siege
 shows the revealed shield and the outcome, a lost siege flashes red on the
@@ -178,7 +169,7 @@ running animations; ⚙ _Animations_ makes them faster or turns them off.
 - **Board proportions.** The graph is laid out 1.35× wider than the photo's
   aspect ratio (`WIDEN` in `layout.ts`), giving the river and the paths more
   room, inside a margin (`MARGIN`) so pieces and paths near the edge stay on
-  the board. Only the 3D layout changes; the graph and the rules don't.
+  the board. Only the layout changes; the graph and the rules don't.
 - **Paths behind the scrolls.** On the board the outer path passes just
   behind each start scroll. `clearStarts` (in `layout.ts`) pushes the two
   markers of any marker-to-marker connection that would run under a scroll
@@ -194,7 +185,7 @@ running animations; ⚙ _Animations_ makes them faster or turns them off.
   ignored, like the knight supply.
 - **Shield token visibility** follows `viewFor`: the viewer's own face-down
   values show as "(n)", everyone else's as "?".
-- **Seats are fixed per game** in the 3D client (chosen in _New game_, or in
+- **Seats are fixed per game** in the game client (chosen in _New game_, or in
   the online lobby); the debug client still allows switching them mid-game.
 - **Online games reuse the local game flow**: a mirrored session from the
   server's views rather than a second client, so both modes share every
@@ -203,26 +194,24 @@ running animations; ⚙ _Animations_ makes them faster or turns them off.
   play, so the first player confirms they are at the screen.
 - **Undo** is only offered on a human's turn, back to the roll or the last
   battle or shield (as in the debug client); bot moves are never undone.
-- **Mouse** follows map conventions (left-drag pans, right-drag rotates)
-  rather than three.js's default orbit-on-left-drag, since panning is the
-  common action on a board.
+- **Mouse** follows map conventions: left-drag pans, wheel zooms.
 
 ### Modules
 
-| Module                                         | What                                                         |
-| ---------------------------------------------- | ------------------------------------------------------------ |
-| `src/main.ts`                                  | the 3D client: game flow, bots, HUD wiring, input            |
-| `src/game/layout.ts`                           | world layout from the graph: nodes, dots, entrances, river   |
-| `src/game/terrain.ts`                          | height field and ground colours                              |
-| `src/game/figures.ts`                          | 1/2/5 figure composition and placement                       |
-| `src/game/steps.ts`                            | animation steps from engine events                           |
-| `src/game/dice.ts`                             | die faces and resting orientation                            |
-| `src/game/saved.ts`                            | save/resume and settings in `localStorage`                   |
-| `src/game/scene.ts`, `models.ts`, `camera.ts`  | three.js scene, low-poly models, camera rig and presets      |
-| `src/game/animator.ts`, `dieView.ts`, `hud.ts` | animation player, die canvas, HUD DOM helpers                |
-| `src/online/`                                  | online mode: connection, lobby, view mirror, tokens          |
-| `src/shared/`                                  | shared with the debug client: session, selection, seats, log |
-|                                                | text, highlight marks, the bot worker and its client         |
+| Module                                            | What                                                         |
+| ------------------------------------------------- | ------------------------------------------------------------ |
+| `src/main.ts`                                     | the game client: game flow, bots, HUD wiring, input          |
+| `src/game/layout.ts`                              | world layout from the graph: nodes, dots, entrances, river   |
+| `src/game/terrain.ts`                             | height field and ground colours                              |
+| `src/game/figures.ts`                             | 1/2/5 figure composition and placement                       |
+| `src/game/steps.ts`                               | animation steps from engine events                           |
+| `src/game/dice.ts`                                | die faces and resting orientation                            |
+| `src/game/saved.ts`                               | save/resume and settings in `localStorage`                   |
+| `src/game/pixelScene.ts`, `look.ts`, `topLook.ts` | pixel-art board renderer, camera rig and the top-down look   |
+| `src/game/animator.ts`, `dieView.ts`, `hud.ts`    | animation player, die canvas, HUD DOM helpers                |
+| `src/online/`                                     | online mode: connection, lobby, view mirror, tokens          |
+| `src/shared/`                                     | shared with the debug client: session, selection, seats, log |
+|                                                   | text, highlight marks, the bot worker and its client         |
 
 The pure modules have unit tests in `test/`. In dev builds `window.hrady`
 exposes a few hooks (node screen positions, the session, the legal targets)

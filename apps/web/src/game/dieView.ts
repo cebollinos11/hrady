@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { restingRotation } from './dice';
-import { die } from './models';
+import { die } from './dieModel';
 
 /**
  * The 3D die in its own small canvas in the HUD, so it stays in view whatever

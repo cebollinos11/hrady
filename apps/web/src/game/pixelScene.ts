@@ -3,8 +3,7 @@ import type { CastleView, PlayerId } from '@hrady/engine';
 import type { Marks } from '../shared/marks';
 import { NO_MARKS } from '../shared/marks';
 import { PLAYER_COLOURS } from '../shared/describe';
-import type { BoardView, ViewRig } from './boardView';
-import type { Preset } from './camera';
+import type { BoardView, Preset, ViewRig } from './boardView';
 import { arrange, compose, startSlots, type FigureSize } from './figures';
 import {
   START_SIZE,
@@ -27,7 +26,7 @@ import type { Knights } from './steps';
  * the browser scales up without smoothing, so one art pixel is a block of
  * screen pixels. The ground is drawn once; castles, knights and trees are
  * sprites sorted back to front each frame. A `Look` says how the world is
- * projected and drawn (isometric, top down), the rest is the same.
+ * projected and drawn, the rest is the same.
  */
 
 const SKY = '#1d2a1f';

@@ -38,14 +38,11 @@ import {
   saveGame,
   type Settings,
 } from './game/saved';
-import { BoardScene } from './game/scene';
 import { PixelScene } from './game/pixelScene';
-import { ISO_LOOK } from './game/isoLook';
 import { TOP_LOOK } from './game/topLook';
-import { VIEW_MODES, ViewSwitch } from './game/boardView';
 import { sinceLastTurn, summary, trailsOf } from './game/recent';
 import { planSteps } from './game/steps';
-import type { Preset } from './game/camera';
+import type { Preset } from './game/boardView';
 import type { Point } from './game/layout';
 import { BotClient } from './shared/botClient';
 import { logLines, placeName, playerName } from './shared/describe';
@@ -135,10 +132,7 @@ function randomSeed() {
 }
 
 const board = () => boardContext(session.state.config).board;
-const scene3d = new BoardScene($<HTMLCanvasElement>('#scene'), board());
-const sceneIso = new PixelScene($<HTMLCanvasElement>('#iso'), board(), scene3d.layout, ISO_LOOK);
-const sceneTop = new PixelScene($<HTMLCanvasElement>('#top'), board(), scene3d.layout, TOP_LOOK);
-const scene = new ViewSwitch({ '3d': scene3d, iso: sceneIso, top: sceneTop }, settings.view);
+const scene = new PixelScene($<HTMLCanvasElement>('#top'), board(), undefined, TOP_LOOK);
 const die = new DieView($<HTMLCanvasElement>('#die'));
 const animator = new Animator(scene, die);
 animator.onIdle = () => render();
@@ -1078,24 +1072,8 @@ setInterval(() => {
 
 // --- Settings ------------------------------------------------------------------
 
-const VIEW_LABELS = { '3d': '3D', iso: 'Isometric', top: 'Top down' } as const;
-
-/** Views whose camera has been put in place; a view shows the whole board when first seen. */
-const seenViews = new Set<string>([settings.view]);
-
-/** The other renderer is on: size it, frame the board the first time and redraw the game. */
-function switchedView() {
-  layout();
-  if (!seenViews.has(scene.mode)) {
-    seenViews.add(scene.mode);
-    scene.rig.go('overview', [], true);
-  }
-  snap();
-}
-
 function applySettings() {
   animator.speed = ANIMATION_SPEED[settings.animations];
-  if (scene.set(settings.view)) switchedView();
   scene.setLabels(settings.labels);
   scene.setTrailsVisible(settings.trails);
   $<HTMLSelectElement>('#bot-speed').value = settings.botSpeed;
@@ -1103,8 +1081,6 @@ function applySettings() {
   $<HTMLInputElement>('#pass-screen').checked = settings.passScreen;
   $<HTMLInputElement>('#labels').checked = settings.labels;
   $<HTMLInputElement>('#trails').checked = settings.trails;
-  $<HTMLSelectElement>('#view').value = settings.view;
-  $('#view-toggle').textContent = VIEW_LABELS[settings.view];
 }
 
 function updateSettings(change: Partial<Settings>) {
@@ -1135,14 +1111,6 @@ $<HTMLInputElement>('#labels').addEventListener('change', (e) =>
 $<HTMLInputElement>('#trails').addEventListener('change', (e) =>
   updateSettings({ trails: (e.target as HTMLInputElement).checked }),
 );
-const toggleView = () =>
-  updateSettings({
-    view: VIEW_MODES[(VIEW_MODES.indexOf(settings.view) + 1) % VIEW_MODES.length]!,
-  });
-$<HTMLSelectElement>('#view').addEventListener('change', (e) =>
-  updateSettings({ view: (e.target as HTMLSelectElement).value as Settings['view'] }),
-);
-$('#view-toggle').addEventListener('click', toggleView);
 
 // --- Camera ----------------------------------------------------------------------
 
@@ -1181,10 +1149,10 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('[data-cam]'))
 
 // --- Pointer and keys ----------------------------------------------------------------
 
-const canvases = [scene3d.canvas, sceneIso.canvas, sceneTop.canvas];
 let down: { x: number; y: number; t: number; id: number } | null = null;
 
-for (const canvas of canvases) {
+{
+  const canvas = scene.canvas;
   canvas.addEventListener('pointerdown', (e) => {
     down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
     $('#settings').hidden = true;
@@ -1230,10 +1198,6 @@ window.addEventListener('keydown', (e) => {
   }
   if (target.tagName === 'SELECT' || e.ctrlKey || e.metaKey || e.altKey) return;
   if (!$('#setup').hidden || !$('#online').hidden) return;
-  if (e.key === 'v') {
-    toggleView();
-    return;
-  }
   const cams: Record<string, Preset> = { '1': 'overview', '2': 'table', '3': 'focus' };
   if (e.key in cams) {
     camera(cams[e.key]!);
@@ -1298,10 +1262,8 @@ function layout() {
   const bottomSheet = panel.left < 20;
   const width = bottomSheet ? window.innerWidth : panel.left - 10;
   const height = bottomSheet ? panel.top + 12 : window.innerHeight;
-  for (const canvas of canvases) {
-    canvas.style.width = `${Math.max(1, width)}px`;
-    canvas.style.height = `${Math.max(1, height)}px`;
-  }
+  scene.canvas.style.width = `${Math.max(1, width)}px`;
+  scene.canvas.style.height = `${Math.max(1, height)}px`;
   scene.resize();
 }
 
@@ -1311,10 +1273,12 @@ window.addEventListener('resize', layout);
 /** Draw every n-th frame only; browser tests turn this up to save CPU. */
 let drawEvery = 1;
 let frame = 0;
-scene3d.renderer.setAnimationLoop((now) => {
+const loop = (now: number) => {
   scene.render(now, frame++ % drawEvery === 0);
   die.update(now);
-});
+  requestAnimationFrame(loop);
+};
+requestAnimationFrame(loop);
 
 applySettings();
 if (window.matchMedia('(max-width: 760px)').matches) $('#log-box').classList.add('collapsed');

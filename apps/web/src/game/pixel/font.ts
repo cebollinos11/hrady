@@ -1,5 +1,5 @@
 /**
- * A 3×5 pixel font for the isometric view: digits, capitals and a little
+ * A 3×5 pixel font for the board: digits, capitals and a little
  * punctuation. Each glyph is five rows of three characters, `#` for ink.
  */
 const GLYPHS: Record<string, string[]> = {

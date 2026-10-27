@@ -22,8 +22,6 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-#scene,
-#iso,
 #top {
   position: fixed;
   top: 0;
@@ -35,11 +33,6 @@ body {
   outline: none;
 }
 
-canvas[hidden] {
-  display: none;
-}
-
-#iso,
 #top {
   image-rendering: pixelated;
   cursor: grab;

@@ -17,7 +17,7 @@ pnpm lint          # ESLint + Prettier check
 pnpm typecheck     # tsc in every package
 pnpm test          # Vitest
 
-pnpm dev:web         # 3D client (apps/web); /debug.html is the 2D debug client
+pnpm dev:web         # game client (apps/web); /debug.html is the 2D debug client
 pnpm dev:server      # game server: Worker + Durable Object via wrangler dev (apps/server)
 pnpm dev:map-editor  # board tracing tool (tools/map-editor)
 pnpm tournament --lineup heuristic,random,random --games 100  # bot-vs-bot (packages/ai)
@@ -29,17 +29,17 @@ pnpm tournament --lineup heuristic,random,random --games 100  # bot-vs-bot (pack
 | `packages/engine`   | pure, deterministic rules engine                            |
 | `packages/ai`       | bots (random, heuristic, Monte-Carlo) and tournaments       |
 | `packages/protocol` | client/server messages for online play and validation       |
-| `apps/web`          | three.js game client, 2D debug client (`debug.html`)        |
+| `apps/web`          | pixel-art game client, 2D debug client (`debug.html`)       |
 | `apps/server`       | online rooms: Cloudflare Worker + `GameRoom` Durable Object |
 | `tools/map-editor`  | click-to-trace editor over the board photo (not shipped)    |
 
 Every push to `main` builds `apps/web` and publishes it on GitHub Pages
-(`.github/workflows/pages.yml`): the 3D game at the root, the 2D debug client
+(`.github/workflows/pages.yml`): the game at the root, the 2D debug client
 at `debug.html`.
 
 ### Online play
 
-_Online_ in the 3D client creates a room (3–5 players) or joins one by code;
+_Online_ in the game client creates a room (3–5 players) or joins one by code;
 the host adds Easy/Medium/Hard bots, which run in the host's browser. The
 server ([`apps/server`](apps/server/README.md)) is authoritative and sends
 each player only their own view. With both dev servers running, the client
