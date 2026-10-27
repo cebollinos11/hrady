@@ -168,10 +168,13 @@ interface Drawable {
 }
 
 export class PixelScene implements BoardView {
-  layout: Layout;
   readonly rig: PixelRig;
   private readonly ctx: Ctx;
-  private terrain: Terrain;
+  /**
+   * The board's layout and ground. Laying out is slow, so an adaptive scene waits
+   * for its first fit to shape them for the view, unless something needs them sooner.
+   */
+  private shape: { layout: Layout; terrain: Terrain } | null = null;
   /** The view's aspect the board is shaped for; `null` until it has been fitted. */
   private fitted: number | null = null;
   private fitDirty = false;
@@ -212,12 +215,28 @@ export class PixelScene implements BoardView {
     /** Reshape the board to the space it is shown in; off for a fixed layout. */
     private readonly adaptive = layout === undefined,
   ) {
-    this.layout = layout ?? buildLayout(board);
+    if (layout) this.shape = { layout, terrain: look.terrain(layout) };
     this.screen = canvas.getContext('2d', { alpha: false })!;
     this.ctx = this.art.getContext('2d', { alpha: false })!;
-    this.terrain = look.terrain(this.layout);
     this.rig = new PixelRig(this);
     this.attachControls();
+  }
+
+  get layout(): Layout {
+    return this.shaped().layout;
+  }
+
+  private get terrain(): Terrain {
+    return this.shaped().terrain;
+  }
+
+  private shaped() {
+    return (this.shape ??= this.shapeFor());
+  }
+
+  private shapeFor(aspect?: number) {
+    const layout = buildLayout(this.board, aspect);
+    return { layout, terrain: this.look.terrain(layout) };
   }
 
   // --- Camera -----------------------------------------------------------------
@@ -388,8 +407,7 @@ export class PixelScene implements BoardView {
     if (prev !== null && Math.abs(Math.log(aspect / prev)) < 0.03) return;
     this.fitted = aspect;
     this.fitAt = now;
-    this.layout = buildLayout(this.board, aspect);
-    this.terrain = this.look.terrain(this.layout);
+    this.shape = this.shapeFor(aspect);
     // The camera was set for the old board.
     this.rig.go(this.rig.current === 'table' ? 'table' : 'overview', [], true);
   }

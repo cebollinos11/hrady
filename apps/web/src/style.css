@@ -735,3 +735,63 @@ button.link::before {
     display: none;
   }
 }
+
+/* Shown by index.html until the first board frame is drawn. The bar's motion is a
+   transform animation, so it keeps moving while the board is being laid out. */
+#loading {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: #1d2a1f;
+  transition: opacity 0.3s;
+}
+
+#loading.done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-title {
+  color: var(--accent);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.loading-track {
+  width: min(240px, 60vw);
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 12%);
+}
+
+.loading-bar {
+  height: 100%;
+  background: var(--accent);
+  transform: scaleX(0.9);
+  transform-origin: left;
+  will-change: transform;
+  animation: loading-fill 2.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+#loading.done .loading-bar {
+  transform: scaleX(1);
+  animation: none;
+  transition: transform 0.15s;
+}
+
+@keyframes loading-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(0.9);
+  }
+}

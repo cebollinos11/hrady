@@ -148,6 +148,12 @@ function randomSeed() {
 }
 
 const board = () => boardContext(session.state.config).board;
+// Laying out the board blocks for a while: let the loading screen paint first.
+// Frames stop in a hidden window, so the wait is capped.
+await new Promise((r) => {
+  requestAnimationFrame(() => setTimeout(r));
+  setTimeout(r, 100);
+});
 const scene = new PixelScene($<HTMLCanvasElement>('#top'), board(), undefined, TOP_LOOK);
 const die = new DieView($<HTMLCanvasElement>('#die'));
 const animator = new Animator(scene, die);
@@ -1533,8 +1539,17 @@ let frame = 0;
 const loop = (now: number) => {
   scene.render(now, frame++ % drawEvery === 0);
   die.update(now);
+  if (frame === 1) hideLoading();
   requestAnimationFrame(loop);
 };
+
+function hideLoading() {
+  const el = $('#loading');
+  el.classList.add('done');
+  el.addEventListener('transitionend', (e) => {
+    if (e.target === el) el.remove();
+  });
+}
 requestAnimationFrame(loop);
 
 applySettings();
