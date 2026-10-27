@@ -14,7 +14,9 @@ import {
   dotsBetween,
   fitDistance,
   nodeRadius,
+  RHINE,
   riverDistance,
+  type Point,
   segmentDistance,
   toWorld,
 } from '../src/game/layout';
@@ -210,5 +212,31 @@ describe('geometry helpers', () => {
       z: -layout.depth / 2,
     });
     expect(clampToBoard(layout, { x: 1, z: 2 })).toEqual({ x: 1, z: 2 });
+  });
+});
+
+describe.each([0.55, 1.3, 1.78, 3])('layout shaped for a view of aspect %s', (aspect) => {
+  const board = loadHradyBoard();
+  const layout = buildLayout(board, aspect);
+  const stretch = Math.max(1 / 2.2, Math.min(2.2, aspect));
+
+  it('takes the shape of the view, with the river along the longer side', () => {
+    expect(layout.width / layout.depth).toBeCloseTo(stretch, 1);
+    expect(layout.graph.turned).toBe(aspect > 1);
+    const ends = RHINE.filter((p) => p.y <= 0 || p.y >= 1).map((p) =>
+      toWorld(layout.graph, p.x, p.y),
+    );
+    const [a, b] = ends as [Point, Point];
+    if (aspect > 1) expect(Math.abs(a.x - b.x)).toBeGreaterThan(Math.abs(a.z - b.z));
+    else expect(Math.abs(a.z - b.z)).toBeGreaterThan(Math.abs(a.x - b.x));
+  });
+
+  it('keeps every node on the board and the river between the banks', () => {
+    for (const n of layout.nodes.values()) {
+      const r = nodeRadius(n.node);
+      expect(Math.abs(n.pos.x) + r).toBeLessThan(layout.width / 2);
+      expect(Math.abs(n.pos.z) + r).toBeLessThan(layout.depth / 2);
+    }
+    expect(riverDistance(layout, { x: 0, z: 0 })).toBeLessThan(0.5);
   });
 });

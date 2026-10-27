@@ -154,10 +154,14 @@ interface Drawable {
 }
 
 export class PixelScene implements BoardView {
-  readonly layout: Layout;
+  layout: Layout;
   readonly rig: PixelRig;
   private readonly ctx: Ctx;
-  private readonly terrain: Terrain;
+  private terrain: Terrain;
+  /** The view's aspect the board is shaped for; `null` until it has been fitted. */
+  private fitted: number | null = null;
+  private fitDirty = false;
+  private fitAt = 0;
   private tweens: Tween[] = [];
   private effects = new Set<Effect>();
   private knights: Knights = {};
@@ -188,6 +192,8 @@ export class PixelScene implements BoardView {
     readonly board: Board,
     layout: Layout | undefined,
     private readonly look: Look,
+    /** Reshape the board to the space it is shown in; off for a fixed layout. */
+    private readonly adaptive = layout === undefined,
   ) {
     this.layout = layout ?? buildLayout(board);
     this.ctx = canvas.getContext('2d', { alpha: false })!;
@@ -323,7 +329,38 @@ export class PixelScene implements BoardView {
     this.canvas.width = this.width;
     this.canvas.height = this.height;
     this.ctx.imageSmoothingEnabled = false;
+    this.fitDirty = true;
+    this.fit(performance.now());
     this.rig.refit();
+  }
+
+  /**
+   * Reshapes the board to the free space of the view: a wide space gets a wide
+   * board with the river along it, a tall one a tall board. Nothing moves while
+   * something is animating and it is not done more than a few times a second;
+   * `render` retries until the board has caught up.
+   */
+  private fit(now: number) {
+    if (!this.adaptive || !this.fitDirty) return;
+    const w = this.canvas.clientWidth;
+    const h = this.canvas.clientHeight - this.rig.insetTop;
+    if (w < 1 || h < 1) return;
+    if (this.tweens.length || this.effects.size) return;
+    const first = this.fitted === null;
+    if (!first && now - this.fitAt < 120) return;
+    this.fitDirty = false;
+    let aspect = w / h;
+    const prev = this.fitted;
+    // Keep the orientation near a square view instead of flipping on every pixel.
+    if (prev !== null && aspect > 0.9 && aspect < 1.1)
+      aspect = prev > 1 ? Math.max(aspect, 1.01) : Math.min(aspect, 0.99);
+    if (prev !== null && Math.abs(Math.log(aspect / prev)) < 0.03) return;
+    this.fitted = aspect;
+    this.fitAt = now;
+    this.layout = buildLayout(this.board, aspect);
+    this.terrain = this.look.terrain(this.layout);
+    // The camera was set for the old board.
+    this.rig.go(this.rig.current === 'table' ? 'table' : 'overview', [], true);
   }
 
   // --- Positions ------------------------------------------------------------------
@@ -655,6 +692,7 @@ export class PixelScene implements BoardView {
       if (p < 1) this.tweens.push(t);
       else t.resolve();
     }
+    this.fit(now);
     this.rig.update(now);
     this.now = now;
     if (!draw || this.canvas.hidden) return;

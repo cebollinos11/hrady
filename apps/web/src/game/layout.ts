@@ -67,7 +67,7 @@ export interface Layout {
   width: number;
   depth: number;
   /** Area the normalised graph coordinates are mapped onto (see `toWorld`). */
-  graph: { width: number; depth: number };
+  graph: GraphSize;
   nodes: Map<string, NodeLayout>;
   /** Dotted connections between path markers and start areas. */
   edges: DottedEdge[];
@@ -104,14 +104,43 @@ export const RHINE: readonly RiverPoint[] = [
   { x: 0.55, y: 1.05, half: 0.17 },
 ];
 
-/** Area the graph is mapped onto, in world units. */
-export function graphSize(board: Board) {
-  const { width, height } = board.data.image ?? DEFAULT_SIZE;
-  return { width: (width / height) * BOARD_DEPTH * WIDEN, depth: BOARD_DEPTH };
+/** The graph area in world units; `turned` lays the river along x instead of z. */
+export interface GraphSize {
+  width: number;
+  depth: number;
+  turned?: boolean;
 }
 
-/** Maps normalised graph coordinates (0..1) onto the graph area, centred on the origin. */
-export function toWorld(size: { width: number; depth: number }, x: number, y: number): Point {
+/** Most elongated board (long side over short side) the view may ask for. */
+export const MAX_STRETCH = 2.2;
+
+/**
+ * Area the graph is mapped onto, in world units. With a view `aspect`
+ * (width / height of the space it is shown in) the board takes that shape,
+ * margins included, with the river along its longer side and about the same
+ * area as the default board; without one it is the photo's shape, widened.
+ */
+export function graphSize(board: Board, aspect?: number): GraphSize {
+  const { width, height } = board.data.image ?? DEFAULT_SIZE;
+  const base = { width: (width / height) * BOARD_DEPTH * WIDEN, depth: BOARD_DEPTH };
+  if (aspect === undefined) return base;
+  const a = Math.max(1 / MAX_STRETCH, Math.min(MAX_STRETCH, aspect));
+  const turned = a > 1;
+  const long = Math.max(a, 1 / a);
+  const area = base.width * base.depth;
+  // Short side from the area, the long side from the shape the margins included.
+  const short = Math.sqrt(area / long);
+  const along = long * (short + 2 * MARGIN) - 2 * MARGIN;
+  return turned ? { width: along, depth: short, turned } : { width: short, depth: along, turned };
+}
+
+/**
+ * Maps normalised graph coordinates (0..1) onto the graph area, centred on the
+ * origin. Turned, the board is rotated a quarter turn so that the river, which
+ * runs along y in the graph, runs along the world's x.
+ */
+export function toWorld(size: GraphSize, x: number, y: number): Point {
+  if (size.turned) return { x: (y - 0.5) * size.width, z: (0.5 - x) * size.depth };
   return { x: (x - 0.5) * size.width, z: (y - 0.5) * size.depth };
 }
 
@@ -265,8 +294,8 @@ export function clearCastles(
   }
 }
 
-export function buildLayout(board: Board): Layout {
-  const size = graphSize(board);
+export function buildLayout(board: Board, aspect?: number): Layout {
+  const size = graphSize(board, aspect);
   const width = size.width + 2 * MARGIN;
   const depth = size.depth + 2 * MARGIN;
   const nodes = new Map<string, NodeLayout>();
@@ -380,7 +409,8 @@ export function riverDistance(layout: Layout, p: Point): number {
     const a = toWorld(size, ra.x, ra.y);
     const b = toWorld(size, rb.x, rb.y);
     const { d, t } = segmentDistance(p, a, b);
-    const half = (ra.half + (rb.half - ra.half) * t) * size.width;
+    // The half width is in units of the extent across the river.
+    const half = (ra.half + (rb.half - ra.half) * t) * (size.turned ? size.depth : size.width);
     best = Math.min(best, d - half);
   }
   return best;
