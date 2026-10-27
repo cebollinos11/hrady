@@ -45,7 +45,7 @@ function fresh(): {
 }
 
 function put(state: GameState, node: string, byPlayer: Partial<Record<PlayerId, number>>) {
-  const counts = new Array<number>(PLAYERS).fill(0);
+  const counts = new Array<number>(state.config.players).fill(0);
   for (const [p, n] of Object.entries(byPlayer)) counts[Number(p)] = n ?? 0;
   state.knights[node] = counts;
 }
@@ -176,4 +176,63 @@ export function demoStages(): DemoStage[] {
     });
   }
   return stages;
+}
+
+const MID_PLAYERS = 4;
+const MID_CASTLES = 2;
+
+/** Seeded shuffle so a seed reproduces the same mid-game. */
+function shuffled<T>(items: readonly T[], next: () => number): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(next() * (i + 1));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
+/**
+ * A game well under way for the `?dev=1` "Mid-game" button: four players, two
+ * castles each with a random shield from their own pool, and every player with
+ * one big stack (20+), several of 10+ and a bunch of 1s and 2s on the paths.
+ */
+export function midGameState(seed: number): GameState {
+  const state = initialState({ players: MID_PLAYERS }, seed);
+  const ctx = boardContext(state.config);
+  let r = seed >>> 0;
+  const next = () => {
+    r = (r + 0x6d2b79f5) >>> 0;
+    let t = r;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const between = (lo: number, hi: number) => lo + Math.floor(next() * (hi - lo + 1));
+
+  const castles = shuffled(ctx.castleIds, next);
+  const paths = shuffled(
+    ctx.order.filter((id) => ctx.type(id) === 'path'),
+    next,
+  );
+  for (let player = 0; player < MID_PLAYERS; player++) {
+    for (const castle of castles.splice(0, MID_CASTLES)) {
+      const pool = state.shields[player]!;
+      const [shield] = pool.splice(between(0, pool.length - 1), 1);
+      state.castles[castle] = { owner: player, shield: { value: shield!, revealed: false } };
+      put(state, castle, { [player]: between(2, 5) });
+    }
+    const sizes = [
+      between(20, 28),
+      ...Array.from({ length: between(3, 5) }, () => between(10, 14)),
+      ...Array.from({ length: between(8, 12) }, () => between(1, 2)),
+    ];
+    for (const size of sizes) {
+      const node = paths.pop();
+      if (node === undefined) break;
+      const counts = new Array<number>(MID_PLAYERS).fill(0);
+      counts[player] = size;
+      state.knights[node] = counts;
+    }
+  }
+  return state;
 }

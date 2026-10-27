@@ -45,7 +45,7 @@ import { PixelScene } from './game/pixelScene';
 import { TOP_LOOK } from './game/topLook';
 import { sinceLastTurn, summary, trailsOf } from './game/recent';
 import { planSteps } from './game/steps';
-import { demoStages } from './dev/demo';
+import { demoStages, midGameState } from './dev/demo';
 import type { Preset } from './game/boardView';
 import type { Point } from './game/layout';
 import { BotClient } from './shared/botClient';
@@ -136,6 +136,8 @@ interface Online {
 }
 
 let online: Online | null = null;
+/** A `?dev=1` mid-game is on the board: its state is not reachable by replaying the record. */
+let staged = false;
 const server = serverUrl(import.meta.env, location.hostname);
 let onlineStore = loadOnline(localStorage);
 
@@ -175,8 +177,9 @@ const interactive = () =>
 const labels = () => (online?.room ? onlineLabels(online.room, online.me) : localLabels(seats));
 
 function persist() {
-  // The local game is kept while a tab plays online.
-  if (!online) saveGame(localStorage, { session, seats });
+  // The local game is kept while a tab plays online. A dev mid-game is not a
+  // replayable record, so it is never saved over the real one.
+  if (!online && !staged) saveGame(localStorage, { session, seats });
   save(localStorage, SETTINGS_KEY, settings);
 }
 
@@ -273,6 +276,7 @@ function play(actions: readonly Action[], after: Selection = NONE) {
 
 /** Takes back the last move, or the whole last walk if it was made in one click. */
 function undoLast() {
+  if (staged) return;
   const length = session.record.actions.length;
   const walk = lastWalk;
   lastWalk = null;
@@ -285,7 +289,8 @@ function undoAll() {
   else setSession(undoTurn(session));
 }
 
-const undoable = () => (online ? onlineFloor(online.log) < online.log.length : canUndo(session));
+const undoable = () =>
+  !staged && (online ? onlineFloor(online.log) < online.log.length : canUndo(session));
 
 function setSession(next: Session) {
   const before = viewer();
@@ -390,9 +395,20 @@ async function playDemo() {
   snap();
 }
 
+/** Replaces the game with a staged mid-game: one human at seat 0 against three bots. */
+function loadMidGame() {
+  if (online || demoRunning) return;
+  const seed = randomSeed();
+  startGame(4, ['human', 'medium', 'medium', 'medium'], seed);
+  staged = true;
+  setSession({ ...session, state: midGameState(seed) });
+  scene.rig.go('overview');
+}
+
 function startGame(players: number, newSeats: Seat[], seed: number) {
   if (online) return;
   bots.cancel();
+  staged = false;
   seats = newSeats;
   curtain = null;
   gameOverSeen = false;
@@ -727,6 +743,7 @@ function render() {
   $('#new-game').textContent = online ? 'Leave room' : 'New game';
   $('#online-button').hidden = online !== null;
   $('#dev-demo').hidden = !DEV || online !== null;
+  $('#dev-midgame').hidden = !DEV || online !== null;
   $('#room-chip').hidden = online === null;
   if (online) $('#room-chip').textContent = `Room ${online.code}`;
   renderLog();
@@ -808,6 +825,7 @@ $<HTMLFormElement>('#setup-form').addEventListener('submit', (e) => {
 });
 $('#new-game').addEventListener('click', () => (online ? leaveOnline() : openSetup()));
 $('#dev-demo').addEventListener('click', () => void playDemo());
+$('#dev-midgame').addEventListener('click', loadMidGame);
 $('#game-over-new').addEventListener('click', () => (online ? leaveOnline() : openSetup()));
 $('#game-over-close').addEventListener('click', () => ($('#game-over').hidden = true));
 $('#log-toggle').addEventListener('click', () => {
