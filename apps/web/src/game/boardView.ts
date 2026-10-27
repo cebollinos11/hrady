@@ -52,7 +52,10 @@ export interface BoardView {
   render(now: number, draw?: boolean): void;
 }
 
-export type ViewMode = '3d' | 'iso';
+export type ViewMode = '3d' | 'iso' | 'top';
+
+/** The views in the order the toggle goes through them. */
+export const VIEW_MODES: readonly ViewMode[] = ['3d', 'iso', 'top'];
 
 /**
  * Both renderers behind one `BoardView`: calls go to the one on show, and the

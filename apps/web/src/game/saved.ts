@@ -1,3 +1,4 @@
+import type { ViewMode } from './boardView';
 import { seatsFor, type Seat } from '../shared/seats';
 import { fromRecord, type Session } from '../shared/session';
 
@@ -17,8 +18,8 @@ export interface Settings {
   labels: boolean;
   /** Arrows for what the other players did since your last turn. */
   trails: boolean;
-  /** The 3D scene or the isometric pixel-art view. */
-  view: '3d' | 'iso';
+  /** The 3D scene, or the isometric or top-down pixel-art view. */
+  view: ViewMode;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -59,7 +60,7 @@ export function loadSettings(store: Store): Settings {
     passScreen: pick(s.passScreen, [true, false], DEFAULT_SETTINGS.passScreen),
     labels: pick(s.labels, [true, false], DEFAULT_SETTINGS.labels),
     trails: pick(s.trails, [true, false], DEFAULT_SETTINGS.trails),
-    view: pick(s.view, ['3d', 'iso'], DEFAULT_SETTINGS.view),
+    view: pick(s.view, ['3d', 'iso', 'top'], DEFAULT_SETTINGS.view),
   };
 }
 

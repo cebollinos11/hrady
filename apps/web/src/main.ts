@@ -39,8 +39,10 @@ import {
   type Settings,
 } from './game/saved';
 import { BoardScene } from './game/scene';
-import { IsoScene } from './game/iso';
-import { ViewSwitch } from './game/boardView';
+import { PixelScene } from './game/pixelScene';
+import { ISO_LOOK } from './game/isoLook';
+import { TOP_LOOK } from './game/topLook';
+import { VIEW_MODES, ViewSwitch } from './game/boardView';
 import { sinceLastTurn, summary, trailsOf } from './game/recent';
 import { planSteps } from './game/steps';
 import type { Preset } from './game/camera';
@@ -134,8 +136,9 @@ function randomSeed() {
 
 const board = () => boardContext(session.state.config).board;
 const scene3d = new BoardScene($<HTMLCanvasElement>('#scene'), board());
-const sceneIso = new IsoScene($<HTMLCanvasElement>('#iso'), board(), scene3d.layout);
-const scene = new ViewSwitch({ '3d': scene3d, iso: sceneIso }, settings.view);
+const sceneIso = new PixelScene($<HTMLCanvasElement>('#iso'), board(), scene3d.layout, ISO_LOOK);
+const sceneTop = new PixelScene($<HTMLCanvasElement>('#top'), board(), scene3d.layout, TOP_LOOK);
+const scene = new ViewSwitch({ '3d': scene3d, iso: sceneIso, top: sceneTop }, settings.view);
 const die = new DieView($<HTMLCanvasElement>('#die'));
 const animator = new Animator(scene, die);
 animator.onIdle = () => render();
@@ -1075,6 +1078,8 @@ setInterval(() => {
 
 // --- Settings ------------------------------------------------------------------
 
+const VIEW_LABELS = { '3d': '3D', iso: 'Isometric', top: 'Top down' } as const;
+
 /** Views whose camera has been put in place; a view shows the whole board when first seen. */
 const seenViews = new Set<string>([settings.view]);
 
@@ -1099,7 +1104,7 @@ function applySettings() {
   $<HTMLInputElement>('#labels').checked = settings.labels;
   $<HTMLInputElement>('#trails').checked = settings.trails;
   $<HTMLSelectElement>('#view').value = settings.view;
-  $('#view-toggle').textContent = settings.view === '3d' ? '3D' : 'Pixel';
+  $('#view-toggle').textContent = VIEW_LABELS[settings.view];
 }
 
 function updateSettings(change: Partial<Settings>) {
@@ -1130,7 +1135,10 @@ $<HTMLInputElement>('#labels').addEventListener('change', (e) =>
 $<HTMLInputElement>('#trails').addEventListener('change', (e) =>
   updateSettings({ trails: (e.target as HTMLInputElement).checked }),
 );
-const toggleView = () => updateSettings({ view: settings.view === '3d' ? 'iso' : '3d' });
+const toggleView = () =>
+  updateSettings({
+    view: VIEW_MODES[(VIEW_MODES.indexOf(settings.view) + 1) % VIEW_MODES.length]!,
+  });
 $<HTMLSelectElement>('#view').addEventListener('change', (e) =>
   updateSettings({ view: (e.target as HTMLSelectElement).value as Settings['view'] }),
 );
@@ -1173,7 +1181,7 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('[data-cam]'))
 
 // --- Pointer and keys ----------------------------------------------------------------
 
-const canvases = [scene3d.canvas, sceneIso.canvas];
+const canvases = [scene3d.canvas, sceneIso.canvas, sceneTop.canvas];
 let down: { x: number; y: number; t: number; id: number } | null = null;
 
 for (const canvas of canvases) {

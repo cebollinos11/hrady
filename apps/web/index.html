@@ -10,6 +10,7 @@
   <body>
     <canvas id="scene"></canvas>
     <canvas id="iso" hidden></canvas>
+    <canvas id="top" hidden></canvas>
 
     <header class="topbar">
       <strong class="brand">Hrady</strong>
@@ -26,10 +27,7 @@
           Zoom
         </button>
       </span>
-      <button
-        id="view-toggle"
-        title="Switch between the 3D board and the isometric pixel-art board (V)"
-      >
+      <button id="view-toggle" title="Switch between the 3D, isometric and top-down boards (V)">
         3D
       </button>
       <button id="settings-button" title="Settings" aria-expanded="false">⚙</button>
@@ -60,6 +58,7 @@
         <select id="view">
           <option value="3d">3D</option>
           <option value="iso">Isometric pixel art</option>
+          <option value="top">Top-down pixel art</option>
         </select>
       </label>
       <label><input id="labels" type="checkbox" /> Castle names (L)</label>
@@ -70,7 +69,7 @@
         Drag to pan, right-drag or two fingers to rotate (3D only), wheel or pinch to zoom. Click
         one of your stacks, then a highlighted target. Hover a log line to see where it happened.
         Keys: R roll, E end turn, S shield, Z undo, Esc cancel, 1–3 camera (press 3 again for your
-        next stack), V 3D / pixel view.
+        next stack), V next board view.
       </p>
       <p><a href="debug.html">2D debug client →</a></p>
     </div>

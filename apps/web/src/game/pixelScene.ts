@@ -10,53 +10,26 @@ import {
   START_SIZE,
   buildLayout,
   course,
-  riverDistance,
   type Layout,
   type NodeLayout,
   type Point,
 } from './layout';
+import { TILE, type Look, type Terrain } from './look';
+import { line, ring } from './pixel/draw';
 import { drawText, textWidth } from './pixel/font';
-import {
-  FIGURE_SPRITE_HEIGHT,
-  INK,
-  canvasOf,
-  castleSprite,
-  darken,
-  diamond,
-  drawBadge,
-  drawLabel,
-  drawShield,
-  knightSprite,
-  lighten,
-  treeSprite,
-  type Ctx,
-  type Sprite,
-} from './pixel/sprites';
+import { INK, drawBadge, drawLabel, drawShield, type Ctx, type Sprite } from './pixel/sprites';
 import type { Trail } from './recent';
 import { pathLength, pointAt } from './route';
 import type { Knights } from './steps';
-import { clearance, heightAt } from './terrain';
 
 /**
- * The isometric pixel-art view of the board, in the style of the old
- * Civilization / Age of Empires games. Everything is drawn into a small
- * canvas that the browser scales up without smoothing, so one art pixel is a
- * block of screen pixels. The ground is a grid of diamond tiles drawn once;
- * castles, knights and trees are sprites sorted back to front each frame.
- *
- * Art coordinates: a world point (x, z) at height y sits at
- * ((x − z) · PX, (x + z) · PY − y · PH), with the world origin at (0, 0).
+ * A pixel-art view of the board. Everything is drawn into a small canvas that
+ * the browser scales up without smoothing, so one art pixel is a block of
+ * screen pixels. The ground is drawn once; castles, knights and trees are
+ * sprites sorted back to front each frame. A `Look` says how the world is
+ * projected and drawn (isometric, top down), the rest is the same.
  */
 
-const PX = 20;
-const PY = 10;
-const PH = 20;
-/** World size of a ground tile (a 16 × 8 pixel diamond), and of one height step. */
-const TILE = 0.4;
-const STEP = 0.1;
-/** How far below the lowest ground the board's edge goes. */
-const BASE = -0.5;
-const WATER_LEVEL = -STEP;
 const SKY = '#1d2a1f';
 const ZOOMS = [1, 1.5, 2, 3, 4, 5, 6];
 const NEUTRAL = '#efe9dc';
@@ -73,342 +46,15 @@ const HIGHLIGHT = {
 
 const colourOf = (p: number | null) => (p === null ? NEUTRAL : (PLAYER_COLOURS[p] ?? '#777777'));
 
-/** Art coordinates of a world point at `y` (world height units). */
-const art = (p: Point, y = 0) => ({
-  x: Math.round((p.x - p.z) * PX),
-  y: Math.round((p.x + p.z) * PY - y * PH),
-});
-
-function hash(a: number, b: number, salt = 0): number {
-  let h =
-    Math.imul(a + 101, 374761393) ^ Math.imul(b + 57, 668265263) ^ Math.imul(salt + 7, 1442695041);
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
-// --- Terrain ------------------------------------------------------------------
-
-interface Tree {
-  p: Point;
-  kind: number;
-}
-
-interface Terrain {
-  canvas: HTMLCanvasElement;
-  /** Art coordinates of the canvas's top-left corner. */
-  left: number;
-  top: number;
-  nx: number;
-  nz: number;
-  x0: number;
-  z0: number;
-  /** Height level (world units) of each tile, `WATER_LEVEL` for water. */
-  levels: Float32Array;
-  water: { x: number; y: number; phase: number }[];
-  trees: Tree[];
-}
-
-const PALETTE = {
-  grass: ['#5fa046', '#58983f', '#68a84c'],
-  hill: ['#4a8a3a', '#437f36', '#52923f'],
-  rock: ['#8d8a7c', '#7f7c70', '#9a978a'],
-  sand: ['#d8c487', '#cdb97a', '#e0cd94'],
-  water: ['#3b82cf', '#3478c4', '#2f6db8'],
-};
-const SKIRT = {
-  earth: ['#5e4630', '#7a5c3c'],
-  rock: ['#6d6a5e', '#85826f'],
-  sand: ['#a8955e', '#bfab70'],
-};
-
-type Ground = 'grass' | 'hill' | 'rock' | 'sand' | 'water';
-
-function buildTerrain(layout: Layout): Terrain {
-  const nx = Math.ceil(layout.width / TILE);
-  const nz = Math.ceil(layout.depth / TILE);
-  const x0 = -(nx * TILE) / 2;
-  const z0 = -(nz * TILE) / 2;
-  const levels = new Float32Array(nx * nz);
-  const kinds: Ground[] = new Array(nx * nz);
-  const centre = (i: number, j: number): Point => ({
-    x: x0 + (i + 0.5) * TILE,
-    z: z0 + (j + 0.5) * TILE,
-  });
-
-  for (let j = 0; j < nz; j++)
-    for (let i = 0; i < nx; i++) {
-      const p = centre(i, j);
-      const h = heightAt(layout, p);
-      const k = j * nx + i;
-      if (h < -0.06) {
-        levels[k] = WATER_LEVEL;
-        kinds[k] = 'water';
-        continue;
-      }
-      const level = Math.max(0, Math.round(h / STEP) * STEP);
-      levels[k] = level;
-      kinds[k] =
-        level >= 0.4
-          ? 'rock'
-          : riverDistance(layout, p) < 0.3 && level === 0
-            ? 'sand'
-            : level >= 0.2
-              ? 'hill'
-              : 'grass';
-    }
-
-  // Canvas bounds: the four corners of the board plus the tallest ground and the base.
-  const corners = [
-    { x: x0, z: z0 },
-    { x: -x0, z: z0 },
-    { x: x0, z: -z0 },
-    { x: -x0, z: -z0 },
-  ];
-  const maxLevel = Math.max(...levels, 0);
-  const xs = corners.map((c) => (c.x - c.z) * PX);
-  const ys = corners.map((c) => (c.x + c.z) * PY);
-  const left = Math.floor(Math.min(...xs)) - 4;
-  const top = Math.floor(Math.min(...ys) - maxLevel * PH) - 6;
-  const width = Math.ceil(Math.max(...xs)) - left + 4;
-  const height = Math.ceil(Math.max(...ys) - BASE * PH) - top + 4;
-  const [canvas, ctx] = canvasOf(width, height);
-  ctx.translate(-left, -top);
-
-  const levelAt = (i: number, j: number) =>
-    i < 0 || j < 0 || i >= nx || j >= nz ? BASE : levels[j * nx + i]!;
-  const water: Terrain['water'] = [];
-  const hw = TILE * PX;
-
-  for (let j = 0; j < nz; j++)
-    for (let i = 0; i < nx; i++) {
-      const k = j * nx + i;
-      const kind = kinds[k]!;
-      const level = levels[k]!;
-      const c = art(centre(i, j));
-      const cy = c.y - Math.round(level * PH);
-      const shade = Math.floor(hash(i, j) * 3);
-      // Side walls where the ground drops to the tile in front (below left / right).
-      if (kind !== 'water') {
-        const wall = kind === 'rock' ? SKIRT.rock : kind === 'sand' ? SKIRT.sand : SKIRT.earth;
-        const lip = PALETTE[kind][1]!;
-        const faces: [number, number, string][] = [
-          [-1, levelAt(i, j + 1), wall[0]!],
-          [1, levelAt(i + 1, j), wall[1]!],
-        ];
-        for (const [side, below, colour] of faces) {
-          const drop = Math.round((level - below) * PH);
-          if (drop <= 0) continue;
-          for (let d = 0; d < hw; d++) {
-            const dx = side < 0 ? -hw + d : d;
-            const edge = side < 0 ? Math.floor((hw + dx + 1) / 2) : Math.floor((hw - dx) / 2);
-            ctx.fillStyle = colour;
-            ctx.fillRect(c.x + dx, cy + edge, 1, drop);
-            ctx.fillStyle = lip;
-            ctx.fillRect(c.x + dx, cy + edge, 1, 1);
-          }
-        }
-      } else {
-        // Banks: the land above the water shows its wall (drawn by the land tile);
-        // the water itself is flat.
-      }
-      diamond(ctx, c.x, cy, hw, PALETTE[kind][shade]!);
-      if (kind === 'water') {
-        water.push({ x: c.x, y: cy, phase: hash(i, j, 3) });
-        continue;
-      }
-      const dress = hash(i, j, 1);
-      if (kind === 'grass' || kind === 'hill') {
-        if (dress < 0.35) {
-          ctx.fillStyle = darken(PALETTE[kind][shade]!, 0.18);
-          ctx.fillRect(c.x - 3 + Math.floor(hash(i, j, 4) * 5), cy - 1, 1, 1);
-          ctx.fillRect(c.x + Math.floor(hash(i, j, 5) * 5), cy + 1, 2, 1);
-        } else if (dress < 0.5) {
-          ctx.fillStyle = lighten(PALETTE[kind][shade]!, 0.15);
-          ctx.fillRect(c.x - 2 + Math.floor(hash(i, j, 6) * 4), cy, 2, 1);
-        }
-        if (kind === 'grass' && dress > 0.97) {
-          ctx.fillStyle = hash(i, j, 8) < 0.5 ? '#f4e04a' : '#ea84a8';
-          ctx.fillRect(c.x - 2 + Math.floor(hash(i, j, 7) * 4), cy, 1, 1);
-        }
-      } else if (kind === 'rock' && dress < 0.4) {
-        ctx.fillStyle = darken(PALETTE.rock[shade]!, 0.2);
-        ctx.fillRect(c.x - 2, cy, 3, 1);
-      }
-    }
-
-  // Flat things on the ground, drawn over the finished terrain.
-  const lift = (p: Point) => {
-    const i = Math.floor((p.x - x0) / TILE);
-    const j = Math.floor((p.z - z0) / TILE);
-    return Math.round(Math.max(0, levelAt(i, j)) * PH);
-  };
-  const onGround = (p: Point) => {
-    const a = art(p);
-    return { x: a.x, y: a.y - lift(p) };
-  };
-  drawFlat(ctx, layout, onGround);
-
-  // Trees keep clear of every node and path.
-  const trees: Tree[] = [];
-  for (let j = 1; j < nz - 1; j++)
-    for (let i = 1; i < nx - 1; i++) {
-      const k = j * nx + i;
-      if (kinds[k] !== 'grass' && kinds[k] !== 'hill') continue;
-      if (hash(i, j, 11) > 0.16) continue;
-      const p = centre(i, j);
-      const near = clearance(layout, p);
-      if (near.node < 0.7 || near.edge < 0.45 || riverDistance(layout, p) < 0.25) continue;
-      trees.push({
-        p: { x: p.x + (hash(i, j, 12) - 0.5) * 0.3, z: p.z + (hash(i, j, 13) - 0.5) * 0.3 },
-        kind: Math.floor(hash(i, j, 14) * 2),
-      });
-    }
-  return { canvas, left, top, nx, nz, x0, z0, levels, water, trees };
-}
-
-/** Plots a pixel line (Bresenham). */
-function line(ctx: Ctx, x0: number, y0: number, x1: number, y1: number, colour: string) {
-  ctx.fillStyle = colour;
-  let [x, y] = [x0, y0];
-  const dx = Math.abs(x1 - x0);
-  const dy = -Math.abs(y1 - y0);
-  const sx = x0 < x1 ? 1 : -1;
-  const sy = y0 < y1 ? 1 : -1;
-  let err = dx + dy;
-  for (;;) {
-    ctx.fillRect(x, y, 1, 1);
-    if (x === x1 && y === y1) break;
-    const e2 = 2 * err;
-    if (e2 >= dy) {
-      err += dy;
-      x += sx;
-    }
-    if (e2 <= dx) {
-      err += dx;
-      y += sy;
-    }
-  }
-}
-
-/** A filled ellipse, one rectangle per row. */
-function ellipse(ctx: Ctx, cx: number, cy: number, rx: number, ry: number, colour: string) {
-  ctx.fillStyle = colour;
-  for (let dy = -ry; dy <= ry; dy++) {
-    const w = Math.round(rx * Math.sqrt(Math.max(0, 1 - (dy / (ry + 0.5)) ** 2)));
-    ctx.fillRect(cx - w, cy + dy, 2 * w + 1, 1);
-  }
-}
-
-/** An ellipse outline `thick` pixels wide. */
-function ring(ctx: Ctx, cx: number, cy: number, rx: number, ry: number, colour: string, thick = 1) {
-  ctx.fillStyle = colour;
-  const steps = Math.ceil(rx * 8);
-  for (let t = 0; t < thick; t++)
-    for (let s = 0; s < steps; s++) {
-      const a = (s / steps) * Math.PI * 2;
-      ctx.fillRect(
-        Math.round(cx + (rx - t) * Math.cos(a)),
-        Math.round(cy + (ry - t * 0.5) * Math.sin(a)),
-        1,
-        1,
-      );
-    }
-}
-
-/** Dotted paths, entrance arrows, markers, start scrolls and castle bases. */
-function drawFlat(ctx: Ctx, layout: Layout, onGround: (p: Point) => { x: number; y: number }) {
-  const dot = (p: Point) => {
-    const a = onGround(p);
-    ctx.fillStyle = '#5b4a2e';
-    ctx.fillRect(a.x - 1, a.y + 1, 2, 1);
-    ctx.fillStyle = '#f1e6c4';
-    ctx.fillRect(a.x - 1, a.y, 2, 1);
-  };
-  for (const e of layout.edges) for (const p of e.dots) dot(p);
-  for (const e of layout.entrances) {
-    for (const p of e.dots) dot(p);
-    const a = onGround(e.pos);
-    // The arrowhead points at the castle: its screen direction from the world heading.
-    const dx = Math.sin(e.angle);
-    const dz = Math.cos(e.angle);
-    const sx = (dx - dz) * PX;
-    const sy = (dx + dz) * PY;
-    const len = Math.hypot(sx, sy) || 1;
-    const ux = sx / len;
-    const uy = sy / len;
-    const tip = { x: Math.round(a.x + ux * 4), y: Math.round(a.y + uy * 4) };
-    const tail = { x: Math.round(a.x - ux * 3), y: Math.round(a.y - uy * 3) };
-    line(ctx, tail.x, tail.y + 1, tip.x, tip.y + 1, '#5b4a2e');
-    line(ctx, tail.x, tail.y, tip.x, tip.y, '#e8c25a');
-    for (const s of [-1, 1])
-      line(
-        ctx,
-        tip.x,
-        tip.y,
-        Math.round(tip.x - ux * 3 - uy * 2 * s),
-        Math.round(tip.y - uy * 3 + ux * 2 * s),
-        '#e8c25a',
-      );
-  }
-  for (const n of layout.nodes.values()) {
-    const a = onGround(n.pos);
-    if (n.node.type === 'path') {
-      ellipse(ctx, a.x, a.y + 1, 8, 4, '#4a4036');
-      ellipse(ctx, a.x, a.y, 8, 4, '#b9ad93');
-      ellipse(ctx, a.x, a.y, 6, 3, '#d9cdb0');
-    } else if (n.node.type === 'start') {
-      drawScroll(ctx, a, n.node.number);
-    } else {
-      ellipse(ctx, a.x, a.y + 2, 17, 8, '#4a4036');
-      ellipse(ctx, a.x, a.y + 1, 17, 8, '#9d917c');
-      ellipse(ctx, a.x, a.y, 15, 7, '#b3a78f');
-    }
-  }
-}
-
-/** A start scroll lying on the ground: parchment, rolled ends and the die number. */
-function drawScroll(ctx: Ctx, a: { x: number; y: number }, number: number) {
-  const hx = START_SIZE.width / 2;
-  const hz = START_SIZE.depth / 2;
-  const covers = (px: number, py: number, grow = 0) => {
-    const u = px / PX;
-    const v = py / PY;
-    const x = (u + v) / 2;
-    const z = (v - u) / 2;
-    return Math.abs(x) <= hx + grow && Math.abs(z) <= hz + grow;
-  };
-  for (let py = -14; py <= 14; py++)
-    for (let px = -22; px <= 22; px++) {
-      if (!covers(px, py, 0.03)) continue;
-      const u = px / PX;
-      const v = py / PY;
-      const x = (u + v) / 2;
-      const edge = Math.abs(x) > hx - 0.07;
-      ctx.fillStyle = edge ? '#b89c68' : covers(px, py + 1, -0.03) ? '#efe2c0' : '#e0d1a4';
-      ctx.fillRect(a.x + px, a.y + py, 1, 1);
-      if (!covers(px, py - 1, 0.03)) {
-        ctx.fillStyle = '#7a6440';
-        ctx.fillRect(a.x + px, a.y + py - 1, 1, 1);
-      }
-    }
-  drawText(
-    ctx,
-    String(number),
-    a.x - Math.floor(textWidth(String(number)) / 2),
-    a.y - 2,
-    '#7a1c16',
-  );
-}
-
 // --- Camera -----------------------------------------------------------------------
 
 /** What `go` is flying to: a zoom (set at once) and the art point at the middle of the view. */
-class IsoRig implements ViewRig {
+class PixelRig implements ViewRig {
   insetTop = 0;
   private preset: Preset | null = null;
   private flight: { fromX: number; fromY: number; start: number } | null = null;
 
-  constructor(private readonly view: IsoScene) {}
+  constructor(private readonly view: PixelScene) {}
 
   get current() {
     return this.preset;
@@ -422,7 +68,7 @@ class IsoRig implements ViewRig {
       ? null
       : { fromX: this.view.camX, fromY: this.view.camY, start: performance.now() };
     this.to = target;
-    if (instant) this.view.look(target.x, target.y);
+    if (instant) this.view.lookAt(target.x, target.y);
   }
 
   private to = { x: 0, y: 0, zoom: 2 };
@@ -442,7 +88,7 @@ class IsoRig implements ViewRig {
     if (!this.flight) return;
     const t = Math.min(1, (now - this.flight.start) / 450);
     const e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
-    this.view.look(
+    this.view.lookAt(
       this.flight.fromX + (this.to.x - this.flight.fromX) * e,
       this.flight.fromY + (this.to.y - this.flight.fromY) * e,
     );
@@ -471,9 +117,9 @@ interface Drawable {
   draw: (ctx: Ctx) => void;
 }
 
-export class IsoScene implements BoardView {
+export class PixelScene implements BoardView {
   readonly layout: Layout;
-  readonly rig: IsoRig;
+  readonly rig: PixelRig;
   private readonly ctx: Ctx;
   private readonly terrain: Terrain;
   private tweens: Tween[] = [];
@@ -498,12 +144,13 @@ export class IsoScene implements BoardView {
   constructor(
     readonly canvas: HTMLCanvasElement,
     readonly board: Board,
-    layout?: Layout,
+    layout: Layout | undefined,
+    private readonly look: Look,
   ) {
     this.layout = layout ?? buildLayout(board);
     this.ctx = canvas.getContext('2d', { alpha: false })!;
-    this.terrain = buildTerrain(this.layout);
-    this.rig = new IsoRig(this);
+    this.terrain = look.terrain(this.layout);
+    this.rig = new PixelRig(this);
     this.attachControls();
   }
 
@@ -520,7 +167,7 @@ export class IsoScene implements BoardView {
   }
 
   /** Moves the middle of the view to an art point, keeping it over the board. */
-  look(x: number, y: number) {
+  lookAt(x: number, y: number) {
     const b = this.bounds;
     this.camX = Math.max(b.left, Math.min(b.right, x));
     this.camY = Math.max(b.top, Math.min(b.bottom, y));
@@ -544,7 +191,7 @@ export class IsoScene implements BoardView {
     if (preset === 'overview') return at(overview, mid.x, mid.y);
     if (preset === 'table') return at(step(overview, 1), mid.x, mid.y);
     if (!focus.length) return at(step(overview, 2), mid.x, mid.y);
-    const pts = focus.map((p) => art(p));
+    const pts = focus.map((p) => this.look.art(p));
     const [x0, x1] = [Math.min(...pts.map((p) => p.x)), Math.max(...pts.map((p) => p.x))];
     const [y0, y1] = [Math.min(...pts.map((p) => p.y)), Math.max(...pts.map((p) => p.y))];
     const zoom = Math.min(4, Math.max(overview, fit(x1 - x0 + 90, y1 - y0 + 110)));
@@ -560,7 +207,7 @@ export class IsoScene implements BoardView {
     const ay = anchor ? anchor.y - rect.top - rect.height / 2 : 0;
     const under = { x: this.camX + ax / this.zoom, y: this.camY + ay / this.zoom };
     this.zoom = zoom;
-    this.look(under.x - ax / zoom, under.y - ay / zoom);
+    this.lookAt(under.x - ax / zoom, under.y - ay / zoom);
     this.resize();
     this.rig.release();
   }
@@ -585,7 +232,7 @@ export class IsoScene implements BoardView {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 1) {
         if (Math.hypot(e.clientX - last.x, e.clientY - last.y) === 0) return;
-        this.look(
+        this.lookAt(
           this.camX - (e.clientX - last.x) / this.zoom,
           this.camY - (e.clientY - last.y) / this.zoom,
         );
@@ -651,8 +298,11 @@ export class IsoScene implements BoardView {
 
   /** Art position of a world point standing on the ground. */
   private ground(p: Point, y = 0) {
-    const a = art(p);
-    return { x: a.x, y: a.y - Math.round((this.levelAt(p) + y) * PH) };
+    const a = this.look.art(p);
+    return {
+      x: a.x,
+      y: a.y - Math.round(this.levelAt(p) * this.look.levelPx) - Math.round(y * this.look.hopPx),
+    };
   }
 
   /** Where `player`'s knights stand on a node, given the knights there. */
@@ -660,8 +310,11 @@ export class IsoScene implements BoardView {
     const n = this.node(id);
     const { pos } = n;
     if (n.node.type === 'path') return pos;
-    // Side by side across the screen: along (1, −1) in the world.
-    const side = (dx: number) => ({ x: pos.x + dx * 0.7071, z: pos.z - dx * 0.7071 });
+    // Side by side across the screen.
+    const side = (dx: number) => {
+      const o = this.look.across(dx);
+      return { x: pos.x + o.x, z: pos.z + o.z };
+    };
     if (n.node.type === 'start') {
       const present = (knights[id] ?? []).flatMap((c, p) => (c > 0 || p === player ? [p] : []));
       const slot = startSlots(present, START_SIZE.width).get(player) ?? { x: 0, z: 0 };
@@ -672,7 +325,7 @@ export class IsoScene implements BoardView {
     const present = (knights[id] ?? []).flatMap((c, p) => (c > 0 || p === player ? [p] : []));
     const slot = startSlots(present, 1.2).get(player) ?? { x: 0, z: 0 };
     const at = side(slot.x);
-    return { x: at.x + 0.62, z: at.z + 0.62 };
+    return { x: at.x + this.look.front.x, z: at.z + this.look.front.z };
   }
 
   private spacing(id: string, players: number): number {
@@ -742,13 +395,14 @@ export class IsoScene implements BoardView {
       let score: number;
       if (n.node.type === 'castle') {
         // The whole castle sprite counts, the stack in front of it too.
-        const inside = p.x >= a.x - 15 && p.x <= a.x + 15 && p.y >= a.y - 40 && p.y <= a.y + 16;
+        const { hw, up, down } = this.look.hit.castle;
+        const inside = p.x >= a.x - hw && p.x <= a.x + hw && p.y >= a.y - up && p.y <= a.y + down;
         if (!inside) continue;
         score = Math.hypot(p.x - a.x, (p.y - a.y + 12) * 0.6) / 40;
       } else {
-        const rx = n.node.type === 'start' ? 22 : 11;
+        const [rx, ry] = n.node.type === 'start' ? this.look.hit.start : this.look.hit.marker;
         // A knight standing on the marker reaches above it.
-        score = Math.hypot((p.x - a.x) / rx, (p.y - a.y + 5) / 11);
+        score = Math.hypot((p.x - a.x) / rx, (p.y - a.y + ry * 0.45) / ry);
         if (score > 1) continue;
       }
       if (!best || score < best.score) best = { id: n.id, score };
@@ -896,17 +550,18 @@ export class IsoScene implements BoardView {
     for (const [id, c] of Object.entries(this.castles)) {
       if (c.owner === null || !this.layout.nodes.has(id)) continue;
       const a = this.ground(this.node(id).pos);
-      ring(ctx, a.x, a.y + 1, 17, 8, colourOf(c.owner), 2);
+      const rx = this.look.rings.castle - 3;
+      ring(ctx, a.x, a.y + 1, rx, rx * this.look.squash, colourOf(c.owner), 2);
     }
     const m = this.marks;
     const mark = (id: string, colour: string, thick = 2, pulse = false, grow = 0) => {
       const n = this.layout.nodes.get(id);
       if (!n) return;
       const a = this.ground(n.pos);
-      const [rx, ry] =
-        n.node.type === 'path' ? [11, 5] : n.node.type === 'start' ? [24, 11] : [20, 9];
-      const k = pulse ? blink : 0;
-      ring(ctx, a.x, a.y + 1, rx + grow + k, ry + (grow + k) / 2, colour, thick);
+      const { path, start, castle } = this.look.rings;
+      const rx = n.node.type === 'path' ? path : n.node.type === 'start' ? start : castle;
+      const k = grow + (pulse ? blink : 0);
+      ring(ctx, a.x, a.y + 1, rx + k, (rx + k) * this.look.squash, colour, thick);
     };
     for (const id of m.selectable) if (id !== m.selected) mark(id, HIGHLIGHT.selectable, 1);
     if (m.selected) mark(m.selected, HIGHLIGHT.selected, 2, false, 1);
@@ -927,7 +582,7 @@ export class IsoScene implements BoardView {
       const sy = a.y + oy;
       if (sx < -margin || sy < -margin * 2 || sx > this.width + margin || sy > this.height + margin)
         continue;
-      const s = treeSprite(tree.kind);
+      const s = this.look.tree(tree.kind);
       out.push({ depth: tree.p.x + tree.p.z, draw: (ctx) => blit(ctx, s, a.x, a.y) });
     }
   }
@@ -936,7 +591,7 @@ export class IsoScene implements BoardView {
     for (const n of this.layout.nodes.values()) {
       if (n.node.type !== 'castle') continue;
       const owner = this.castles[n.id]?.owner ?? null;
-      const s = castleSprite(owner === null ? null : colourOf(owner), n.node.value);
+      const s = this.look.castle(owner === null ? null : colourOf(owner), n.node.value);
       const a = this.ground(n.pos);
       out.push({ depth: n.pos.x + n.pos.z, draw: (ctx) => blit(ctx, s, a.x, a.y) });
     }
@@ -954,9 +609,9 @@ export class IsoScene implements BoardView {
   ) {
     const colour = colourOf(player);
     for (const f of arrange(compose(count), spacing)) {
-      // The layout puts big figures at the back (−z) for the 3D camera; here that is −x −z.
-      const p = { x: at.x + (f.x + f.z) * 0.7071, z: at.z + (f.z - f.x) * 0.7071 };
-      const s = knightSprite(f.size as FigureSize, colour);
+      const o = this.look.figure(f);
+      const p = { x: at.x + o.x, z: at.z + o.z };
+      const s = this.look.knight(f.size as FigureSize, colour);
       const a = this.ground(p, y);
       out.push({ depth: p.x + p.z + 0.01, draw: (ctx) => blit(ctx, s, a.x, a.y - lift) });
     }
@@ -992,10 +647,10 @@ export class IsoScene implements BoardView {
         if (!c) return;
         const at = this.standPoint(id, player);
         const a = this.ground(at);
-        const tallest = Math.max(...compose(c).map((s) => FIGURE_SPRITE_HEIGHT[s]));
+        const tallest = Math.max(...compose(c).map((s) => this.look.knightHeight[s]));
         const rows = compose(c).length > 1 ? 4 : 0;
         const lift = this.lifts.get(`${id}:${player}`) ?? 0;
-        drawBadge(ctx, a.x, a.y - tallest - 6 - rows - lift, c, colourOf(player));
+        drawBadge(ctx, a.x, a.y - tallest - this.look.badge - rows - lift, c, colourOf(player));
       });
     }
     for (const e of this.effects) {
@@ -1009,7 +664,14 @@ export class IsoScene implements BoardView {
       const a = this.ground(this.node(id).pos);
       const s = view.shield;
       const text = s.revealed ? String(s.value ?? '?') : s.value === null ? '?' : `(${s.value})`;
-      drawShield(ctx, a.x + 15, a.y - 34, colourOf(view.owner), text, s.revealed);
+      drawShield(
+        ctx,
+        a.x + this.look.shield.x,
+        a.y + this.look.shield.y,
+        colourOf(view.owner),
+        text,
+        s.revealed,
+      );
     }
 
     if (this.labels)
@@ -1018,8 +680,14 @@ export class IsoScene implements BoardView {
         const a = this.ground(n.pos);
         const w = textWidth(n.node.name) + 4;
         ctx.fillStyle = INK;
-        ctx.fillRect(a.x - Math.floor(w / 2), a.y - 49, w, 9);
-        drawText(ctx, n.node.name, a.x - Math.floor(w / 2) + 2, a.y - 47, '#fff6e0');
+        ctx.fillRect(a.x - Math.floor(w / 2), a.y - this.look.castleLabel, w, 9);
+        drawText(
+          ctx,
+          n.node.name,
+          a.x - Math.floor(w / 2) + 2,
+          a.y - this.look.castleLabel + 2,
+          '#fff6e0',
+        );
       }
 
     // The cost of targets more than one step away.
@@ -1046,15 +714,19 @@ export class IsoScene implements BoardView {
     const a = this.ground(n.pos);
     if (e.kind === 'ring') {
       const grow = Math.round(e.t * 14);
-      const [rx, ry] = n.node.type === 'castle' ? [18, 9] : [9, 4.5];
-      if (e.t < 0.85) ring(ctx, a.x, a.y, rx + grow, ry + grow / 2, e.colour, 2);
-      if (e.t < 0.5) ring(ctx, a.x, a.y, rx + grow / 2, ry + grow / 4, '#ffffff', 1);
+      const rx = (n.node.type === 'castle' ? this.look.rings.castle : this.look.rings.path) - 2;
+      const q = this.look.squash;
+      if (e.t < 0.85) ring(ctx, a.x, a.y, rx + grow, (rx + grow) * q, e.colour, 2);
+      if (e.t < 0.5) ring(ctx, a.x, a.y, rx + grow / 2, (rx + grow / 2) * q, '#ffffff', 1);
     } else if (e.kind === 'text') {
-      const y = a.y - (n.node.type === 'castle' ? 58 : 26) - Math.round(e.t * 12);
+      const y =
+        a.y -
+        (n.node.type === 'castle' ? this.look.popup.castle : this.look.popup.other) -
+        Math.round(e.t * 12);
       if (e.t < 0.9) drawLabel(ctx, e.text, a.x, y, e.colour);
     } else {
-      const y = a.y - 34 - Math.round((1 - e.t * e.t) * 50);
-      drawShield(ctx, a.x + 15, y, e.colour, '', false);
+      const y = a.y + this.look.shield.y - Math.round((1 - e.t * e.t) * 50);
+      drawShield(ctx, a.x + this.look.shield.x, y, e.colour, '', false);
     }
   }
 

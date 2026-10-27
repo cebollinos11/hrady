@@ -14,16 +14,20 @@ A local game for 3–5 players, each seat Human or an Easy, Medium or Hard bot,
 on an original low-poly board built from the graph in `@hrady/board`. The
 board photo is never used or shipped by the 3D client.
 
-- **Two views of the board**: the 3D scene (`scene.ts`) and an isometric
-  pixel-art one in the style of the old Civilization / Age of Empires games
-  (`iso.ts`), switched with the _3D_ / _Pixel_ button, `V`, or the Board view
-  setting (remembered). Both implement `BoardView` (`boardView.ts`) and the
-  `ViewSwitch` forwards the game client's calls to the one on show. The pixel
-  view draws into a small 2D canvas the browser scales up without smoothing:
-  the ground is diamond tiles drawn once, castles, knights and trees are
-  sprites built from code (`pixel/`) and sorted back to front, text uses a 3×5
-  bitmap font. Drag pans, wheel or pinch zooms, and the Board / Table / Zoom
-  buttons fit the whole board, step in, or frame the selection.
+- **Three views of the board**: the 3D scene (`scene.ts`) and two pixel-art
+  ones, isometric in the style of the old Civilization / Age of Empires games
+  and top down like the 16-bit adventure games. The _3D_ / _Isometric_ /
+  _Top down_ button and `V` cycle through them; the Board view setting picks
+  one (remembered). All implement `BoardView` (`boardView.ts`) and the
+  `ViewSwitch` forwards the game client's calls to the one on show. The
+  pixel views are one `PixelScene` (`pixelScene.ts`) with a `Look`
+  (`look.ts`; `isoLook.ts`, `topLook.ts`) that says how the world is
+  projected and the ground and sprites (`pixel/`) are drawn. It draws into a
+  small 2D canvas the browser scales up without smoothing: the ground is
+  tiles drawn once, castles, knights and trees are sprites sorted back to
+  front, text uses a 3×5 bitmap font. Drag pans, wheel or pinch zooms, and the
+  Board / Table / Zoom buttons fit the whole board, step in, or frame the
+  selection.
 - **New game**: players, who plays each seat and an optional seed. The game
   and the settings are kept in `localStorage` (`hrady-game`,
   `hrady-settings`) and resumed on the next visit; the debug client keeps its

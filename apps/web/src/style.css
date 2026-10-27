@@ -23,7 +23,8 @@ body {
 }
 
 #scene,
-#iso {
+#iso,
+#top {
   position: fixed;
   top: 0;
   left: 0;
@@ -38,7 +39,8 @@ canvas[hidden] {
   display: none;
 }
 
-#iso {
+#iso,
+#top {
   image-rendering: pixelated;
   cursor: grab;
 }

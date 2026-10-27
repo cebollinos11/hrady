@@ -136,7 +136,7 @@ export function build(
 }
 
 /** A sprite from a character map; `palette` gives each character's colour. */
-function fromMap(
+export function fromMap(
   rows: string[],
   palette: Record<string, string>,
   anchor: [number, number],
