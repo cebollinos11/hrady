@@ -64,7 +64,9 @@ import {
   attackAction,
   carryOver,
   click,
+  isAmbiguous,
   optionsFor,
+  selectStack,
   setContribution,
   setCount,
   targetsFor,
@@ -309,15 +311,51 @@ function select(next: Selection) {
 
 const isLegal = (action: Action) => validateAction(session.state, action) === null;
 
-function onNodeClick(id: string) {
+function onNodeClick(id: string, at?: { x: number; y: number }) {
+  hideNodeMenu();
   if (animator.busy) {
     animator.hurry();
     return;
   }
   if (!interactive()) return;
+  if (at && isAmbiguous(selection, options, id)) {
+    showNodeMenu(at, [
+      ['Go here', () => goTo(id)],
+      ['Select this unit', () => select(selectStack(options, id))],
+    ]);
+    return;
+  }
+  goTo(id);
+}
+
+function goTo(id: string) {
   const result = click(selection, options, id, isLegal);
   if (result.actions) play(result.actions, result.selection);
   else select(result.selection);
+}
+
+/** Small menu at the pointer, offering what a click on a node could mean. */
+function showNodeMenu(at: { x: number; y: number }, items: [string, () => void][]) {
+  const menu = $('#node-menu');
+  menu.replaceChildren(
+    ...items.map(([label, run]) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.addEventListener('click', () => {
+        hideNodeMenu();
+        if (!animator.busy && interactive()) run();
+      });
+      return b;
+    }),
+  );
+  menu.hidden = false;
+  const { width, height } = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(4, Math.min(at.x, innerWidth - width - 4))}px`;
+  menu.style.top = `${Math.max(4, Math.min(at.y, innerHeight - height - 4))}px`;
+}
+
+function hideNodeMenu() {
+  $('#node-menu').hidden = true;
 }
 
 // --- Dev: animation demo ---------------------------------------------------
@@ -1362,6 +1400,7 @@ let down: { x: number; y: number; t: number; id: number } | null = null;
   canvas.addEventListener('pointerdown', (e) => {
     down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
     $('#settings').hidden = true;
+    hideNodeMenu();
   });
   canvas.addEventListener('pointerup', (e) => {
     const d = down;
@@ -1370,7 +1409,7 @@ let down: { x: number; y: number; t: number; id: number } | null = null;
     // A drag pans the camera; only a short, still press is a click.
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8 || performance.now() - d.t > 700) return;
     const id = scene.pick(e.clientX, e.clientY);
-    if (id) onNodeClick(id);
+    if (id) onNodeClick(id, { x: e.clientX, y: e.clientY });
     else if (interactive() && selection.kind !== 'none') select(NONE);
   });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1429,6 +1468,7 @@ window.addEventListener('keydown', (e) => {
   const player = session.state.current;
   switch (e.key) {
     case 'Escape':
+      hideNodeMenu();
       select(NONE);
       break;
     case 'r':

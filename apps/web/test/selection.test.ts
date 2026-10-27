@@ -5,6 +5,7 @@ import {
   NONE,
   attackAction,
   click,
+  isAmbiguous,
   optionsFor,
   setContribution,
   carryOver,
@@ -219,5 +220,17 @@ describe('click', () => {
       selection: NONE,
       actions: [{ type: 'attackCastle', player: 0, castle: 'tower', from: 'd', count: 2 }],
     });
+  });
+});
+
+describe('ambiguous click', () => {
+  it('flags an own stack the selected stack could walk onto', () => {
+    const state = scenario({ knights: { a: { 0: 3 }, b: { 0: 1 }, c: { 1: 1 } } });
+    const options = optionsFor(state);
+    const selected: Selection = { kind: 'stack', from: 'a', count: 3 };
+    expect(isAmbiguous(selected, options, 'b')).toBe(true);
+    expect(isAmbiguous(selected, options, 'a')).toBe(false);
+    expect(isAmbiguous(selected, options, 'c')).toBe(false);
+    expect(isAmbiguous(NONE, options, 'b')).toBe(false);
   });
 });

@@ -163,7 +163,17 @@ export function targetsFor(options: Options, from: string, count?: number): Targ
   return { moves, castles, fields, paths };
 }
 
-function selectStack(options: Options, from: string): Selection {
+/**
+ * Whether a click on `node` is ambiguous: another own stack that the selected
+ * stack could walk onto, so the player may mean "go there" or "select it".
+ */
+export function isAmbiguous(selection: Selection, options: Options, node: string): boolean {
+  if (selection.kind !== 'stack' || node === selection.from || !options.movable.has(node))
+    return false;
+  return targetsFor(options, selection.from, selection.count).moves.has(node);
+}
+
+export function selectStack(options: Options, from: string): Selection {
   const max = options.movable.get(from);
   return max ? { kind: 'stack', from, count: max } : NONE;
 }
