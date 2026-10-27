@@ -39,6 +39,8 @@ import type { Knights } from './steps';
 
 const SKY = '#1d2a1f';
 const ZOOMS = [1, 1.5, 2, 3, 4, 5, 6];
+/** Most figures drawn for one stack, however many knights it holds. */
+const MAX_FIGURES = 3;
 const NEUTRAL = '#efe9dc';
 
 const HIGHLIGHT = {
@@ -800,7 +802,8 @@ export class PixelScene implements BoardView {
     fade?: (i: number, n: number) => { alpha: number; sink: number },
   ) {
     const colour = colourOf(player);
-    const figures = arrange(compose(count), spacing);
+    // The badge tells the count; a few figures only say whose stack it is.
+    const figures = arrange(compose(count).slice(0, MAX_FIGURES), spacing);
     figures.forEach((f, i) => {
       const o = this.look.figure(f);
       const p = { x: at.x + o.x, z: at.z + o.z };
@@ -858,8 +861,9 @@ export class PixelScene implements BoardView {
         if (!c) return;
         const at = this.standPoint(id, player);
         const a = this.ground(at);
-        const tallest = Math.max(...compose(c).map((s) => this.look.knightHeight[s]));
-        const rows = compose(c).length > 1 ? 4 : 0;
+        const shown = compose(c).slice(0, MAX_FIGURES);
+        const tallest = Math.max(...shown.map((s) => this.look.knightHeight[s]));
+        const rows = shown.length > 1 ? 4 : 0;
         const lift = this.lifts.get(`${id}:${player}`) ?? 0;
         drawBadge(ctx, a.x, a.y - tallest - this.look.badge - rows - lift, c, colourOf(player));
       });
@@ -897,8 +901,11 @@ export class PixelScene implements BoardView {
         if (n.node.type !== 'castle') continue;
         const a = this.ground(n.pos);
         const w = textWidth(n.node.name) + 4;
+        // Names are reference, not state: let the board show through.
+        ctx.globalAlpha = 0.55;
         ctx.fillStyle = INK;
         ctx.fillRect(a.x - Math.floor(w / 2), a.y - this.look.castleLabel, w, 9);
+        ctx.globalAlpha = 1;
         drawText(
           ctx,
           n.node.name,

@@ -92,7 +92,7 @@ export function placeTrees(layout: Layout, g: Grid): Tree[] {
     for (let i = 1; i < g.nx - 1; i++) {
       const kind = g.kinds[j * g.nx + i];
       if (kind !== 'grass' && kind !== 'hill') continue;
-      if (hash(i, j, 11) > 0.16) continue;
+      if (hash(i, j, 11) > 0.06) continue;
       const p = tileCentre(g, i, j);
       const near = clearance(layout, p);
       if (near.node < 0.7 || near.edge < 0.45 || riverDistance(layout, p) < 0.25) continue;

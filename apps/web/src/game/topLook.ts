@@ -18,11 +18,11 @@ const S = 25;
 const art = (p: Point, y = 0) => ({ x: Math.round(p.x * S), y: Math.round(p.z * S - y * 14) });
 
 const PALETTE = {
-  grass: ['#5fa046', '#58983f', '#68a84c'],
-  hill: ['#4a8a3a', '#437f36', '#52923f'],
-  rock: ['#8d8a7c', '#7f7c70', '#9a978a'],
-  sand: ['#d8c487', '#cdb97a', '#e0cd94'],
-  water: ['#3b82cf', '#3478c4', '#2f6db8'],
+  grass: ['#5c9b45', '#5a9843', '#5e9e47'],
+  hill: ['#5a9643', '#589441', '#5c9945'],
+  rock: ['#88897a', '#85867a', '#8b8c7d'],
+  sand: ['#d2c18a', '#cfbd86', '#d5c48e'],
+  water: ['#3a7fca', '#387cc7', '#3b82cd'],
 };
 
 function buildTerrain(layout: Layout): Terrain {
@@ -47,7 +47,7 @@ function buildTerrain(layout: Layout): Terrain {
       const y = c.y - px / 2;
       const shade = Math.floor(hash(i, j) * 3);
       let colour = PALETTE[kind][shade]!;
-      if (kind !== 'water') colour = lighten(colour, h * 0.25);
+      if (kind !== 'water') colour = lighten(colour, h * 0.08);
       ctx.fillStyle = colour;
       ctx.fillRect(x, y, px, px);
       if (kind === 'water') {
@@ -57,13 +57,9 @@ function buildTerrain(layout: Layout): Terrain {
       const dress = hash(i, j, 1);
       if (kind === 'grass' || kind === 'hill') {
         ctx.fillStyle = darken(colour, 0.16);
-        if (dress < 0.4) {
+        if (dress < 0.15) {
           ctx.fillRect(x + 1 + Math.floor(hash(i, j, 4) * 7), y + 2, 1, 2);
           ctx.fillRect(x + 1 + Math.floor(hash(i, j, 5) * 7), y + 6, 2, 1);
-        }
-        if (kind === 'grass' && dress > 0.96) {
-          ctx.fillStyle = hash(i, j, 8) < 0.5 ? '#f4e04a' : '#ea84a8';
-          ctx.fillRect(x + 2 + Math.floor(hash(i, j, 7) * 6), y + 4, 1, 1);
         }
       } else if (kind === 'rock' && dress < 0.5) {
         ctx.fillStyle = darken(colour, 0.2);
@@ -73,11 +69,11 @@ function buildTerrain(layout: Layout): Terrain {
       // A ledge: the ground drops below this tile, so it casts a shadow on it.
       const drop = h - level(i, j + 1);
       if (drop > 0.01) {
-        ctx.fillStyle = darken(colour, kind === 'sand' ? 0.3 : 0.45);
+        ctx.fillStyle = darken(colour, kind === 'sand' ? 0.12 : 0.18);
         ctx.fillRect(x, y + px - (drop > 0.15 ? 3 : 2), px, drop > 0.15 ? 3 : 2);
       }
       if (h - level(i + 1, j) > 0.01) {
-        ctx.fillStyle = darken(colour, 0.2);
+        ctx.fillStyle = darken(colour, 0.08);
         ctx.fillRect(x + px - 1, y, 1, px);
       }
     }
