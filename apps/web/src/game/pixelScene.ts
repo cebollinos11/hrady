@@ -159,6 +159,8 @@ type Effect =
 
 /** How high a knight hovers before it lands, in art pixels. */
 const SPAWN_HEIGHT = 24;
+/** World length a walk takes its nominal duration to cover; longer ones take proportionally longer. */
+const WALK_REFERENCE = 2;
 /** How far a revealed shield is lifted above its place on the castle. */
 const REVEAL_LIFT = 15;
 
@@ -588,7 +590,8 @@ export class PixelScene implements BoardView {
     const end = back ? len * 0.55 : len;
     const walker: Effect = { kind: 'walk', player, count, x: a.x, z: a.z, y: 0 };
     this.effects.add(walker);
-    await this.tween(duration, (t) => {
+    // `duration` is the time for a walk of WALK_REFERENCE, so the pace is the same on any distance.
+    await this.tween(duration * Math.max(0.4, end / WALK_REFERENCE), (t) => {
       const s = back ? Math.sin(t * Math.PI) : t * t * (3 - 2 * t);
       const p = pointAt(way, s * end);
       walker.x = p.x;
