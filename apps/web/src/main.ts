@@ -1,6 +1,7 @@
 import {
   boardContext,
   legalActions,
+  mustEndTurn,
   score,
   validateAction,
   viewFor,
@@ -205,6 +206,8 @@ function perform(action: Action): boolean {
     return false;
   }
   advance(next);
+  // Spending the last movement point ends the turn (online, the server does it).
+  if (mustEndTurn(next.state)) return perform({ type: 'endTurn', player: next.state.current });
   return true;
 }
 

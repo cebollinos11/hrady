@@ -1,5 +1,6 @@
 import {
   apply,
+  mustEndTurn,
   validateAction,
   initialState,
   viewFor,
@@ -567,30 +568,36 @@ function act(
   const reason = validateAction(g.state, action);
   if (reason) return { room: current, out: [error(reason, 'invalid')] };
 
-  const { state, events } = apply(g.state, action);
-  const entry: LogEntry = auto ? { action, events, auto: true } : { action, events };
-  for (const e of events)
-    if (e.type === 'castleAttacked' && e.won && e.defender !== null && e.shield !== null)
-      g.removed[e.defender]!.push(e.shield);
-  g.state = state;
-  g.length++;
-  g.clock = ctx.now;
-  // Moves can be taken back by the person who made them; anything else (or a bot's move) is final.
-  if (action.type === 'move' && !auto) g.tail.push(action);
-  else {
-    g.floor = state;
-    g.tail = [];
+  const entries: LogEntry[] = [];
+  for (let next: Action | null = action; next;) {
+    const { state, events } = apply(g.state, next);
+    const entry: LogEntry = auto ? { action: next, events, auto: true } : { action: next, events };
+    for (const e of events)
+      if (e.type === 'castleAttacked' && e.won && e.defender !== null && e.shield !== null)
+        g.removed[e.defender]!.push(e.shield);
+    g.state = state;
+    g.length++;
+    g.clock = ctx.now;
+    // Moves can be taken back by the person who made them; anything else (or a bot's move) is final.
+    if (next.type === 'move' && !auto) g.tail.push(next);
+    else {
+      g.floor = state;
+      g.tail = [];
+    }
+    if (state.phase === 'over') {
+      room.phase = 'over';
+      g.ended = ctx.now;
+    }
+    for (const x of connected(room))
+      out.push({
+        to: x.id,
+        msg: { type: 'action', at: g.length - 1, entry, view: viewFor(state, x.seat) },
+      });
+    entries.push(entry);
+    // Spending the last movement point ends the turn.
+    next = mustEndTurn(state) ? { type: 'endTurn', player: state.current } : null;
   }
-  if (state.phase === 'over') {
-    room.phase = 'over';
-    g.ended = ctx.now;
-  }
-  for (const x of connected(room))
-    out.push({
-      to: x.id,
-      msg: { type: 'action', at: g.length - 1, entry, view: viewFor(state, x.seat) },
-    });
-  return finish(before, room, out, ctx.now, { append: [entry] });
+  return finish(before, room, out, ctx.now, { append: entries });
 }
 
 function undo(

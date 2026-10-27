@@ -173,6 +173,10 @@ function contributionsFor(
   return out;
 }
 
+/** True when the current player has spent all movement points (and has no shield to place): the turn ends by itself. */
+export const mustEndTurn = (state: GameState): boolean =>
+  state.phase === 'move' && state.mp < 1 && state.pendingShield === null;
+
 /**
  * Every legal action for `player`, in a stable order: shield placement, moves,
  * field attacks, castle attacks, end of turn. Empty when it is not their turn.

@@ -1,7 +1,13 @@
 export type * from './types';
 export { DEFAULT_RULES, MAX_PLAYERS, MIN_PLAYERS } from './types';
 export { IllegalActionError, apply, isTerminal, replay } from './apply';
-export { castleDefence, legalActions, validateAction, visibleCastleDefence } from './rules';
+export {
+  castleDefence,
+  legalActions,
+  mustEndTurn,
+  validateAction,
+  visibleCastleDefence,
+} from './rules';
 export { score } from './score';
 export {
   boardContext,
