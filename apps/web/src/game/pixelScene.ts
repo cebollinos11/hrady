@@ -183,10 +183,15 @@ export class PixelScene implements BoardView {
       for (const z of ZOOMS) if (w * z <= cssW && h * z <= cssH) best = z;
       return best;
     };
-    const overview = fit(b.right - b.left + 12, b.bottom - b.top + 12);
+    // The overview fills the free space as far as the board's shape allows; the rest is letterbox.
+    const [bw, bh] = [b.right - b.left + 12, b.bottom - b.top + 12];
+    const overview = Math.max(ZOOMS[0]!, Math.min(ZOOMS.at(-1)!, cssW / bw, cssH / bh));
     const at = (zoom: number, x: number, y: number) => ({ zoom, x, y: y - inset / (2 * zoom) });
     const mid = { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 };
-    const step = (z: number, n: number) => ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(z) + n)]!;
+    const step = (z: number, n: number) => {
+      const above = ZOOMS.filter((v) => v > z + 1e-6);
+      return above[Math.min(above.length, n) - 1] ?? ZOOMS.at(-1)!;
+    };
     if (preset === 'overview') return at(overview, mid.x, mid.y);
     if (preset === 'table') return at(step(overview, 1), mid.x, mid.y);
     if (!focus.length) return at(step(overview, 2), mid.x, mid.y);
