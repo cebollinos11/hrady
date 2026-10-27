@@ -9,6 +9,7 @@ import {
   ARROW_TIP,
   clampToBoard,
   distance,
+  dotsAlong,
   dotsBetween,
   fitDistance,
   nodeRadius,
@@ -16,6 +17,7 @@ import {
   segmentDistance,
   toWorld,
 } from '../src/game/layout';
+import { route } from '../src/game/route';
 import { heightAt } from '../src/game/terrain';
 
 const boards = [
@@ -67,6 +69,17 @@ describe.each(boards)('layout of the %s board', (_, board) => {
       for (const dot of e.dots) {
         expect(distance(dot, a.pos)).toBeGreaterThan(nodeRadius(a.node) - 1e-9);
         expect(distance(dot, b.pos)).toBeGreaterThan(nodeRadius(b.node) - 1e-9);
+      }
+    }
+  });
+
+  it('winds the dotted paths round the pieces in their way', () => {
+    for (const e of layout.edges) {
+      expect(e.path[0]).toEqual(layout.nodes.get(e.a)!.pos);
+      expect(e.path.at(-1)).toEqual(layout.nodes.get(e.b)!.pos);
+      for (const n of layout.nodes.values()) {
+        if (n.id === e.a || n.id === e.b) continue;
+        for (const dot of e.dots) expect(distance(dot, n.pos)).toBeGreaterThan(nodeRadius(n.node));
       }
     }
   });
@@ -147,6 +160,24 @@ describe('geometry helpers', () => {
     expect(dots[0]!.x).toBeGreaterThan(0.3);
     expect(dots.at(-1)!.x).toBeLessThan(1.7);
     expect(dotsBetween({ x: 0, z: 0 }, { x: 0.5, z: 0 }, 0.3, 0.3)).toEqual([]);
+  });
+
+  it('routes straight when nothing is in the way, else round it', () => {
+    const a = { x: -2, z: 0 };
+    const b = { x: 2, z: 0 };
+    const bounds = { width: 8, depth: 8 };
+    expect(route(a, b, [{ x: 0, z: 1, r: 0.5 }], bounds)).toEqual([a, b]);
+    const castle = { x: 0, z: 0.1, r: 0.5 };
+    const path = route(a, b, [castle], bounds);
+    expect(path[0]).toEqual(a);
+    expect(path.at(-1)).toEqual(b);
+    for (let i = 1; i < path.length; i++)
+      expect(segmentDistance(castle, path[i - 1]!, path[i]!).d).toBeGreaterThan(castle.r);
+    // Round the side the obstacle leaves more room on.
+    expect(Math.min(...path.map((p) => p.z))).toBeLessThan(-0.4);
+    const dots = dotsAlong(path, 0.3, 0.3);
+    expect(dots.length).toBeGreaterThan(20);
+    for (const d of dots) expect(distance(d, castle)).toBeGreaterThan(castle.r);
   });
 
   it('fits the board in view for any aspect', () => {

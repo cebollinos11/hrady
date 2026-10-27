@@ -54,11 +54,9 @@ export function clearance(layout: Layout, p: Point): { node: number; edge: numbe
   for (const n of layout.nodes.values())
     node = Math.min(node, Math.hypot(n.pos.x - p.x, n.pos.z - p.z) - nodeRadius(n.node));
   let edge = Infinity;
-  for (const e of layout.edges) {
-    const a = layout.nodes.get(e.a)!.pos;
-    const b = layout.nodes.get(e.b)!.pos;
-    edge = Math.min(edge, segmentDistance(p, a, b).d);
-  }
+  for (const e of layout.edges)
+    for (let i = 1; i < e.path.length; i++)
+      edge = Math.min(edge, segmentDistance(p, e.path[i - 1]!, e.path[i]!).d);
   for (const e of layout.entrances) {
     const a = layout.nodes.get(e.marker)!.pos;
     const b = layout.nodes.get(e.castle)!.pos;

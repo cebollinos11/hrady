@@ -1,8 +1,9 @@
 import type { Board, BoardNode } from '@hrady/board';
+import { pathLength, pointAt, route, type Obstacle } from './route';
 
 /**
  * Where everything sits on the 3D board, computed from the board graph only.
- * World units: the graph is spread over `graph.depth` = 12 units from top (-z)
+ * World units: the graph is spread over `graph.depth` = 15 units from top (-z)
  * to bottom (+z) and `WIDEN` times as wide as its aspect ratio says, which
  * leaves more room between the nodes and for the river; the board adds a
  * `MARGIN` all round so pieces and paths near the edge stay on it. y is up.
@@ -11,7 +12,7 @@ import type { Board, BoardNode } from '@hrady/board';
 
 /** Board size in graph units when the graph has no reference size. */
 const DEFAULT_SIZE = { width: 876, height: 1200 };
-export const BOARD_DEPTH = 12;
+export const BOARD_DEPTH = 15;
 /** How much wider than the photo's aspect ratio the graph is laid out. */
 export const WIDEN = 1.35;
 /** Free border between the graph's extent and the board edge. */
@@ -39,6 +40,8 @@ export interface NodeLayout {
 export interface DottedEdge {
   a: string;
   b: string;
+  /** Course of the path from `a` to `b`: straight, or curving round what is in the way. */
+  path: Point[];
   dots: Point[];
 }
 
@@ -146,6 +149,27 @@ export function dotsBetween(a: Point, b: Point, ra: number, rb: number, spacing 
   });
 }
 
+/** Evenly spaced dots along a path, from where it leaves the rim at its start to the rim at its end. */
+export function dotsAlong(path: readonly Point[], ra: number, rb: number, spacing = 0.16): Point[] {
+  if (path.length === 2) return dotsBetween(path[0]!, path[1]!, ra, rb, spacing);
+  const a = path[0]!;
+  const b = path.at(-1)!;
+  const len = pathLength(path);
+  const fine = 0.01;
+  let s0 = 0;
+  while (s0 < len && distance(pointAt(path, s0), a) < ra) s0 += fine;
+  let s1 = len;
+  while (s1 > s0 && distance(pointAt(path, s1), b) < rb) s1 -= fine;
+  const free = s1 - s0;
+  if (free <= spacing) return [];
+  const n = Math.floor(free / spacing);
+  const step = free / (n + 1);
+  return Array.from({ length: n }, (_, i) => pointAt(path, s0 + step * (i + 1)));
+}
+
+/** Room kept between a dotted path and the pieces it winds past. */
+export const PATH_CLEARANCE = 0.08;
+
 /** Closest a connection that does not touch a start area may pass by its centre. */
 export const START_CLEARANCE = 0.62;
 
@@ -189,6 +213,58 @@ export function clearStarts(
   }
 }
 
+/**
+ * Nudges castles off the connections between markers that run through them,
+ * and away from other nodes they crowd, so that fewer paths need to wind
+ * round them. Each castle settles where those pushes balance out; markers
+ * and start areas stay put, and no castle moves more than `reach` from where
+ * the graph puts it: past that, the paths go round it instead.
+ */
+export function clearCastles(
+  board: Board,
+  nodes: Map<string, NodeLayout>,
+  reach = 0.3,
+  rounds = 40,
+) {
+  const home = new Map(board.castles.map((c) => [c.id, nodes.get(c.id)!.pos]));
+  const links = board.data.edges
+    .map(([a, b]) => [nodes.get(a)!, nodes.get(b)!] as const)
+    .filter(([a, b]) => a.node.type !== 'castle' && b.node.type !== 'castle');
+  for (let k = 0; k < rounds; k++) {
+    for (const castle of board.castles) {
+      const c = nodes.get(castle.id)!;
+      const rc = nodeRadius(c.node) + PATH_CLEARANCE;
+      let px = 0;
+      let pz = 0;
+      const away = (from: Point, need: number, d: number) => {
+        if (d >= need) return;
+        let dx = c.pos.x - from.x;
+        let dz = c.pos.z - from.z;
+        const len = Math.hypot(dx, dz);
+        if (len < 1e-6) [dx, dz] = [0, 1];
+        else [dx, dz] = [dx / len, dz / len];
+        px += dx * (need - d);
+        pz += dz * (need - d);
+      };
+      for (const [a, b] of links) {
+        const { d, t } = segmentDistance(c.pos, a.pos, b.pos);
+        const p = { x: a.pos.x + (b.pos.x - a.pos.x) * t, z: a.pos.z + (b.pos.z - a.pos.z) * t };
+        away(p, rc + 0.05, d);
+      }
+      for (const n of nodes.values()) {
+        if (n === c) continue;
+        away(n.pos, rc + nodeRadius(n.node) + 0.05, distance(c.pos, n.pos));
+      }
+      const h = home.get(castle.id)!;
+      let dx = c.pos.x + px * 0.3 - h.x;
+      let dz = c.pos.z + pz * 0.3 - h.z;
+      const moved = Math.hypot(dx, dz);
+      if (moved > reach) [dx, dz] = [(dx / moved) * reach, (dz / moved) * reach];
+      c.pos = { x: h.x + dx, z: h.z + dz };
+    }
+  }
+}
+
 export function buildLayout(board: Board): Layout {
   const size = graphSize(board);
   const width = size.width + 2 * MARGIN;
@@ -197,40 +273,60 @@ export function buildLayout(board: Board): Layout {
   for (const node of board.data.nodes)
     nodes.set(node.id, { id: node.id, node, pos: toWorld(size, node.x, node.y), facing: 0 });
   clearStarts(board, nodes, { width, depth });
+  clearCastles(board, nodes);
 
-  const edges: DottedEdge[] = [];
   const entrances: Entrance[] = [];
+  const paths: [NodeLayout, NodeLayout][] = [];
   for (const [a, b] of board.data.edges) {
     const na = nodes.get(a)!;
     const nb = nodes.get(b)!;
     const castle = na.node.type === 'castle' ? na : nb.node.type === 'castle' ? nb : null;
-    if (castle) {
-      const marker = castle === na ? nb : na;
-      const angle = heading(marker.pos, castle.pos);
-      const len = distance(marker.pos, castle.pos);
-      // As close to the castle as it goes, but never back into the marker.
-      const r = Math.max(
-        nodeRadius(marker.node) + ARROW_TAIL + 0.03,
-        len - nodeRadius(castle.node) - ARROW_TIP - 0.05,
-      );
-      const dots = dotsBetween(
-        marker.pos,
-        castle.pos,
-        nodeRadius(marker.node),
-        len - r + ARROW_TAIL,
-      );
-      entrances.push({
-        castle: castle.id,
-        marker: marker.id,
-        angle,
-        pos: { x: marker.pos.x + Math.sin(angle) * r, z: marker.pos.z + Math.cos(angle) * r },
-        dots,
-      });
-    } else {
-      const dots = dotsBetween(na.pos, nb.pos, nodeRadius(na.node), nodeRadius(nb.node));
-      edges.push({ a, b, dots });
+    if (!castle) {
+      paths.push([na, nb]);
+      continue;
     }
+    const marker = castle === na ? nb : na;
+    const angle = heading(marker.pos, castle.pos);
+    const len = distance(marker.pos, castle.pos);
+    // As close to the castle as it goes, but never back into the marker.
+    const r = Math.max(
+      nodeRadius(marker.node) + ARROW_TAIL + 0.03,
+      len - nodeRadius(castle.node) - ARROW_TIP - 0.05,
+    );
+    const dots = dotsBetween(marker.pos, castle.pos, nodeRadius(marker.node), len - r + ARROW_TAIL);
+    entrances.push({
+      castle: castle.id,
+      marker: marker.id,
+      angle,
+      pos: { x: marker.pos.x + Math.sin(angle) * r, z: marker.pos.z + Math.cos(angle) * r },
+      dots,
+    });
   }
+
+  // Paths between markers wind round the castles, markers, start areas and
+  // entrance arrows in their way.
+  const pieces: (Obstacle & { id?: string })[] = [
+    ...[...nodes.values()].map((n) => ({
+      id: n.id,
+      ...n.pos,
+      r: nodeRadius(n.node) + PATH_CLEARANCE,
+    })),
+    ...entrances.map((e) => ({ ...e.pos, r: ARROW_TIP + PATH_CLEARANCE / 2 })),
+  ];
+  const bounds = {
+    width: width - 2 * (MARKER_RADIUS + 0.12),
+    depth: depth - 2 * (MARKER_RADIUS + 0.12),
+  };
+  const edges: DottedEdge[] = paths.map(([na, nb]) => {
+    const obstacles = pieces.filter((o) => o.id !== na.id && o.id !== nb.id);
+    const path = route(na.pos, nb.pos, obstacles, bounds);
+    return {
+      a: na.id,
+      b: nb.id,
+      path,
+      dots: dotsAlong(path, nodeRadius(na.node), nodeRadius(nb.node)),
+    };
+  });
 
   // Castles face their entrance (the mean direction when there are several).
   for (const castle of board.castles) {
