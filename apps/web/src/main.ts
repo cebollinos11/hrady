@@ -1,4 +1,5 @@
 import {
+  apply,
   boardContext,
   legalActions,
   mustEndTurn,
@@ -43,6 +44,7 @@ import { PixelScene } from './game/pixelScene';
 import { TOP_LOOK } from './game/topLook';
 import { sinceLastTurn, summary, trailsOf } from './game/recent';
 import { planSteps } from './game/steps';
+import { demoStages } from './dev/demo';
 import type { Preset } from './game/boardView';
 import type { Point } from './game/layout';
 import { BotClient } from './shared/botClient';
@@ -302,6 +304,81 @@ function onNodeClick(id: string) {
   const result = click(selection, options, id, isLegal);
   if (result.actions) play(result.actions, result.selection);
   else select(result.selection);
+}
+
+// --- Dev: animation demo ---------------------------------------------------
+
+/** `?dev=1` shows the demo button. */
+const DEV = new URLSearchParams(location.search).get('dev') === '1';
+let demoRunning = false;
+
+/**
+ * Starts a new hotseat game and, on top of it, plays each demo stage on the
+ * board: the real engine events of a few staged situations go through the
+ * animator. Afterwards the board shows the new game again.
+ */
+async function playDemo() {
+  if (online || demoRunning) return;
+  demoRunning = true;
+  startGame(3, ['human', 'human', 'human'], randomSeed());
+  // Nobody to pass the screen to: the demo is for one pair of eyes.
+  curtain = null;
+  render();
+  const stages = demoStages();
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const show = (state: GameState) => {
+    const view = viewFor(state, 0);
+    scene.showKnights(view.knights);
+    scene.showCastles(view.castles);
+    scene.showGhost(ghostOf(state));
+  };
+  const setup = (stage: (typeof stages)[number]) => {
+    show(stage.state);
+    scene.showMarks(NO_MARKS);
+    if (stage.focus.length)
+      scene.rig.go(
+        'focus',
+        stage.focus.map((id) => scene.nodePoint(id)),
+      );
+    else scene.rig.go('overview');
+    toast(stage.title, 3000, true);
+  };
+  // Every action of every stage, with what to do once its animation has played.
+  const jobs: { stage: number; pause: number; job: Parameters<Animator['enqueue']>[0] }[] = [];
+  stages.forEach((stage, stageIndex) => {
+    let state = stage.state;
+    for (const step of stage.steps) {
+      const action = typeof step.action === 'function' ? step.action(state) : step.action;
+      const { state: after, events } = apply(state, action);
+      const entry = {
+        stage: stageIndex,
+        pause: step.pause ?? 0,
+        job: {
+          before: viewFor(state, 0).knights,
+          steps: planSteps(events),
+          done: () => show(after),
+        },
+      };
+      jobs.push(entry);
+      state = after;
+    }
+  });
+  setup(stages[0]!);
+  jobs.forEach((entry, i) => {
+    const next = jobs[i + 1];
+    const showAfter = entry.job.done;
+    entry.job.done = async () => {
+      await showAfter();
+      if (!next) return;
+      // Look at the board a moment; the next stage starts from its own staged state.
+      await wait(next.stage === entry.stage ? next.pause : 1200);
+      if (next.stage !== entry.stage) setup(stages[next.stage]!);
+    };
+    animator.enqueue(entry.job);
+  });
+  await animator.whenIdle();
+  demoRunning = false;
+  snap();
 }
 
 function startGame(players: number, newSeats: Seat[], seed: number) {
@@ -636,6 +713,7 @@ function render() {
   $('#players').replaceChildren(...playersTable(shown, view, labels()));
   $('#new-game').textContent = online ? 'Leave room' : 'New game';
   $('#online-button').hidden = online !== null;
+  $('#dev-demo').hidden = !DEV || online !== null;
   $('#room-chip').hidden = online === null;
   if (online) $('#room-chip').textContent = `Room ${online.code}`;
   renderLog();
@@ -716,6 +794,7 @@ $<HTMLFormElement>('#setup-form').addEventListener('submit', (e) => {
   startGame(players, setupSeats.slice(0, players), seed);
 });
 $('#new-game').addEventListener('click', () => (online ? leaveOnline() : openSetup()));
+$('#dev-demo').addEventListener('click', () => void playDemo());
 $('#game-over-new').addEventListener('click', () => (online ? leaveOnline() : openSetup()));
 $('#game-over-close').addEventListener('click', () => ($('#game-over').hidden = true));
 $('#log-toggle').addEventListener('click', () => {

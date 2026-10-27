@@ -15,7 +15,7 @@ export interface Job {
   before: Knights;
   steps: Step[];
   /** Shows the view after the action (castles, shields, knights). */
-  done: () => void;
+  done: () => void | Promise<void>;
 }
 
 /**
@@ -75,7 +75,7 @@ export class Animator {
         knights = countsAfter(knights, step);
         this.scene.showKnights(knights);
       }
-      job.done();
+      await job.done();
     }
     this.running = false;
     this.hurrying = false;

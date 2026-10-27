@@ -76,7 +76,7 @@ describe('Animator', () => {
     animator.enqueue({
       before: { d: [6, 0, 0], tower: [0, 2, 0] },
       steps,
-      done: () => calls.push('done'),
+      done: () => void calls.push('done'),
     });
     // The fake keeps timed effects pending, so release them as they come.
     for (let i = 0; i < 20 && animator.busy; i++) {
@@ -114,7 +114,7 @@ describe('Animator', () => {
     const { scene, calls, ghost } = fakeScene();
     const animator = new Animator(scene, die);
     const steps = planSteps([{ type: 'knightPlaced', player: 0, start: 's1' }]);
-    animator.enqueue({ before: {}, steps, done: () => calls.push('done') });
+    animator.enqueue({ before: {}, steps, done: () => void calls.push('done') });
     animator.hurry();
     await animator.whenIdle();
     expect(calls).toContain('done');
