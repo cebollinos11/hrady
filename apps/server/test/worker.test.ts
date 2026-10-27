@@ -100,6 +100,38 @@ describe('worker', () => {
     ).toBe(400);
   });
 
+  it('lists the same games for a username on every device, whatever its case', async () => {
+    const { code, token } = await createRoom('Ann');
+    const post = (name: string, body: unknown) =>
+      fetch(`http://${base}/api/players/${encodeURIComponent(name)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const get = async (name: string) =>
+      (await (await fetch(`http://${base}/api/players/${encodeURIComponent(name)}`)).json()) as {
+        games: { code: string; token: string }[];
+      };
+
+    expect(await get('Zed Phone')).toEqual({ games: [] });
+    expect((await post('Zed Phone', { add: { code, token } })).status).toBe(200);
+    // The laptop types the same name in other letters.
+    expect(await get('zed  PHONE')).toEqual({ games: [{ code, token }] });
+    expect(await get('Somebody Else')).toEqual({ games: [] });
+
+    // The token from the profile works in the room.
+    const phone = new Socket(code);
+    await phone.opened;
+    phone.send({ type: 'hello', name: 'Zed Phone', token });
+    expect((await phone.next('welcome')).you.id).toBe('m1');
+    phone.close();
+
+    expect((await post('zed phone', { add: { code, token: 'x' } })).status).toBe(400);
+    expect(await (await post('zed phone', { forget: code })).json()).toEqual({ games: [] });
+    expect(await get('Zed Phone')).toEqual({ games: [] });
+    expect((await fetch(`http://${base}/api/players/%20`)).status).toBe(404);
+  });
+
   it(
     'runs a lobby and a game over WebSockets, and survives a reconnect',
     { timeout: 60_000 },

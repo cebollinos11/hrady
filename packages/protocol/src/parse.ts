@@ -8,6 +8,7 @@ import {
   type BotLevel,
   type ClientMessage,
   type CreateRoomRequest,
+  type ProfileUpdate,
   type RoomMode,
   type StatusRequest,
 } from './messages';
@@ -173,6 +174,32 @@ export function parseCreateRoom(raw: unknown): CreateRoomRequest {
     out.mode = raw.mode as RoomMode;
   }
   return out;
+}
+
+/**
+ * The key of a username: the name as `normaliseName` reads it, lower-cased, so
+ * "Ann" and "ann" are the same player. `null` if it cannot be a name.
+ */
+export function profileKey(text: string): string | null {
+  const name = normaliseName(text);
+  return name === null ? null : name.toLowerCase();
+}
+
+/** Parses the body of `POST /api/players/:name`. */
+export function parseProfileUpdate(raw: unknown): ProfileUpdate {
+  if (!isObj(raw)) throw new ProtocolError('expected { add } or { forget }');
+  if (raw.forget !== undefined) {
+    const code = typeof raw.forget === 'string' ? normaliseCode(raw.forget) : null;
+    if (!code) throw new ProtocolError('forget must be a room code');
+    return { forget: code };
+  }
+  const add = raw.add;
+  if (!isObj(add)) throw new ProtocolError('expected { add } or { forget }');
+  const code = typeof add.code === 'string' ? normaliseCode(add.code) : null;
+  if (!code) throw new ProtocolError('add.code must be a room code');
+  if (typeof add.token !== 'string' || !/^[\w-]{8,64}$/.test(add.token))
+    throw new ProtocolError('malformed token');
+  return { add: { code, token: add.token } };
 }
 
 /** Parses the body of `POST /api/rooms/:code/status`. */

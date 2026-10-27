@@ -54,7 +54,9 @@ node apps/web/scripts/online-e2e.mjs   # a whole game in several Playwright brow
 not minutes: take your turn, close the tab, and the next human plays whenever
 they open it. Nobody is replaced by a bot, the room lives up to 14 days, and
 the computer players play in the host's browser when the host opens the game,
-so they must sit right before the host in turn order. The _Play online_
+so they must sit right before the host in turn order. Your name
+is your username (it cannot be blank): the same name on another device lists
+the same games, with no password. The _Play online_
 dialog lists your games ("My games") with whose turn it is, and a local
 single-player game can be played in between. See [`docs/ASYNC.md`](docs/ASYNC.md).
 

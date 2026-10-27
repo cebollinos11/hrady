@@ -27,6 +27,7 @@ import {
   normaliseCode,
   type Duty,
   type LogEntry,
+  type ProfileGame,
   type RoomInfo,
   type ServerMessage,
 } from '@hrady/protocol';
@@ -74,13 +75,15 @@ import { serverUrl, socketUrl } from './online/config';
 import {
   Connection,
   createRoom,
+  getProfile,
   roomExists,
   roomStatus,
+  updateProfile,
   type ConnectionStatus,
 } from './online/connection';
 import { renderGames, renderLobby, type LobbyHandlers, type LobbyScreen } from './online/lobby';
 import { fromSnapshot, mirror, onlineFloor, stateFromView } from './online/mirror';
-import { clockText, describeGame, onlineLabels, seatOf } from './online/room';
+import { clockText, describeGame, onlineLabels, seatOf, type GameRow } from './online/room';
 import { forgetToken, loadOnline, rememberToken, saveOnline } from './online/store';
 
 // The 2D debug client stays reachable: index.html?debug opens it.
@@ -864,16 +867,33 @@ function showLobby(screen: LobbyScreen | null) {
 let gamesRequest = 0;
 
 /**
- * Asks the server about every room this browser holds a token for and lists
- * them in the dialog. Rooms the server has forgotten are dropped from the
- * store; the list is redrawn in place so typing is not interrupted.
+ * Lists the games remembered for the username on the server, so the same name
+ * shows the same games on every device. Their tokens are copied into this
+ * browser so a game can be opened; rooms the server has forgotten are dropped.
+ * The list is redrawn in place, so typing is not interrupted.
  */
 async function loadGames() {
   if (!server) return;
   const run = ++gamesRequest;
   const base = server;
+  const name = onlineStore.name;
+  const show = (games: GameRow[]) => {
+    if (run !== gamesRequest || lobbyScreen?.kind !== 'entry') return;
+    lobbyScreen.games = games;
+    const el = document.getElementById('online-games');
+    if (el) renderGames(el, games, lobbyHandlers);
+  };
+  if (!name) return show([]);
+  let remembered: ProfileGame[] = [];
+  try {
+    remembered = (await getProfile(base, name)).games;
+  } catch {
+    // The list stays empty; the next time the dialog opens tries again.
+  }
+  for (const { code, token } of remembered)
+    if (onlineStore.tokens[code] !== token) onlineStore = rememberToken(onlineStore, code, token);
   const results = await Promise.all(
-    Object.entries(onlineStore.tokens).map(async ([code, token]) => {
+    remembered.map(async ({ code, token }) => {
       try {
         return { code, status: await roomStatus(base, code, token) };
       } catch {
@@ -881,17 +901,29 @@ async function loadGames() {
       }
     }),
   );
-  if (run !== gamesRequest) return;
   for (const { code, status } of results)
-    if (status === null) onlineStore = forgetToken(onlineStore, code);
+    if (status === null) {
+      onlineStore = forgetToken(onlineStore, code);
+      void updateProfile(base, name, { forget: code }).catch(() => {});
+    }
   saveOnline(localStorage, onlineStore);
-  const games = results
-    .flatMap(({ status }) => (status ? [describeGame(status)] : []))
-    .sort((a, b) => Number(b.mine) - Number(a.mine));
-  if (lobbyScreen?.kind !== 'entry') return;
-  lobbyScreen.games = games;
-  const el = document.getElementById('online-games');
-  if (el) renderGames(el, games, lobbyHandlers);
+  show(
+    results
+      .flatMap(({ status }) => (status ? [describeGame(status)] : []))
+      .sort((x, y) => Number(y.mine) - Number(x.mine)),
+  );
+}
+
+/** Games already told to the server under this name, so a reconnect does not repeat it. */
+const registered = new Set<string>();
+
+/** Remembers a room under the username, for the other devices. */
+function registerGame(code: string, token: string) {
+  const name = onlineStore.name;
+  const key = `${name.toLowerCase()}|${code}|${token}`;
+  if (!server || !name || registered.has(key)) return;
+  registered.add(key);
+  updateProfile(server, name, { add: { code, token } }).catch(() => registered.delete(key));
 }
 
 function entryScreen(change: Partial<Extract<LobbyScreen, { kind: 'entry' }>> = {}): LobbyScreen {
@@ -942,6 +974,13 @@ const lobbyHandlers: LobbyHandlers = {
     if (!code) showLobby(entryScreen({ name, code: text, error: 'That is not a room code.' }));
     else connectOnline(code);
   },
+  rename(name) {
+    rememberName(name.trim());
+    if (lobbyScreen?.kind !== 'entry') return;
+    lobbyScreen.name = name.trim();
+    lobbyScreen.games = null;
+    void loadGames();
+  },
   open: (code) => connectOnline(code),
   send: (msg) => online?.conn.send(msg),
   leave: () => leaveOnline(),
@@ -972,6 +1011,11 @@ function setRoomUrl(code: string | null) {
 /** Joins a room (with the stored token, if this browser was in it before). */
 function connectOnline(code: string) {
   if (!server) return;
+  // Everybody needs a name: it is also the username that lists their games.
+  if (!onlineStore.name.trim()) {
+    showLobby(entryScreen({ code, error: 'Write your name first.' }));
+    return;
+  }
   if (online) closeOnline();
   bots.cancel();
   botRequest = null;
@@ -979,7 +1023,7 @@ function connectOnline(code: string) {
     socketUrl(server, code),
     () => {
       const token = onlineStore.tokens[code];
-      const name = onlineStore.name || 'Player';
+      const name = onlineStore.name;
       return token ? { type: 'hello', name, token } : { type: 'hello', name };
     },
     () => roomExists(server, code),
@@ -1039,6 +1083,7 @@ function onServer(o: Online, msg: ServerMessage) {
       o.me = msg.you.id;
       onlineStore = rememberToken(onlineStore, o.code, msg.you.token);
       saveOnline(localStorage, onlineStore);
+      registerGame(o.code, msg.you.token);
       setRoom(o, msg.room);
       o.pending = 0;
       o.after = null;
@@ -1436,7 +1481,7 @@ snap();
 const roomParam = new URLSearchParams(location.search).get('room');
 const roomCode = roomParam ? normaliseCode(roomParam) : null;
 if (roomCode && server) {
-  if (onlineStore.name || onlineStore.tokens[roomCode]) connectOnline(roomCode);
+  if (onlineStore.name) connectOnline(roomCode);
   else showLobby(entryScreen({ code: roomCode }));
 } else if (!saved) openSetup();
 

@@ -3,6 +3,7 @@ export {
   BOT_LEVELS,
   DEFAULT_TURN_SECONDS,
   MAX_MESSAGE_LENGTH,
+  MAX_PROFILE_GAMES,
   MAX_NAME_LENGTH,
   PING,
   PONG,
@@ -19,6 +20,8 @@ export {
   parseAction,
   parseClientMessage,
   parseCreateRoom,
+  parseProfileUpdate,
   parseStatusRequest,
+  profileKey,
 } from './parse';
 export { asyncSeatProblem } from './order';

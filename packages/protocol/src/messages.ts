@@ -166,3 +166,20 @@ export interface RoomStatus {
   room: RoomInfo;
   me: string | null;
 }
+
+/** A room a player belongs to, as kept in their profile. */
+export interface ProfileGame {
+  code: string;
+  token: string;
+}
+
+/** Answer to `GET /api/players/:name`: the player's games, newest first. */
+export interface Profile {
+  games: ProfileGame[];
+}
+
+/** Body of `POST /api/players/:name`: remember a game or forget a room. */
+export type ProfileUpdate = { add: ProfileGame } | { forget: string };
+
+/** Games kept per profile; the oldest are forgotten first. */
+export const MAX_PROFILE_GAMES = 20;

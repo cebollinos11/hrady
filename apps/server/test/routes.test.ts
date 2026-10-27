@@ -8,6 +8,16 @@ describe('route', () => {
     expect(route('POST', '/api/rooms')).toEqual({ kind: 'create' });
     expect(route('GET', '/api/rooms/abcde')).toEqual({ kind: 'info', code: 'ABCDE' });
     expect(route('POST', '/api/rooms/abcde/status')).toEqual({ kind: 'status', code: 'ABCDE' });
+    expect(route('GET', '/api/players/Ann%20Lee')).toEqual({
+      kind: 'profile',
+      name: 'ann lee',
+      update: false,
+    });
+    expect(route('POST', '/api/players/ANN')).toEqual({
+      kind: 'profile',
+      name: 'ann',
+      update: true,
+    });
     expect(route('GET', '/ws/Room42/')).toEqual({ kind: 'socket', code: 'ROOM42' });
   });
 
@@ -16,6 +26,10 @@ describe('route', () => {
       ['GET', '/api/rooms'],
       ['POST', '/api/rooms/ABCDE'],
       ['GET', '/api/rooms/ABCDE/status'],
+      ['GET', '/api/players/%20'],
+      ['GET', '/api/players/%E0%A4%A'],
+      ['DELETE', '/api/players/ann'],
+      ['GET', '/api/players/'],
       ['GET', '/ws/'],
       ['GET', '/ws/abc'],
       ['GET', '/ws/abc-def'],

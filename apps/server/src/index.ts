@@ -6,9 +6,13 @@ import {
   makeCode,
   parseClientMessage,
   parseCreateRoom,
+  parseProfileUpdate,
   parseStatusRequest,
   type CreateRoomResponse,
   type LogEntry,
+  type Profile,
+  type ProfileGame,
+  type ProfileUpdate,
   type RoomInfo,
   type RoomMode,
   type RoomStatus,
@@ -27,10 +31,12 @@ import {
   type Result,
   type Room,
 } from './room';
+import { addGame, forgetGame } from './profile';
 import { allowOrigin, route } from './routes';
 
 export interface Env {
   ROOMS: DurableObjectNamespace<GameRoom>;
+  PROFILES: DurableObjectNamespace<PlayerProfile>;
   /** Comma-separated origins allowed to call the API and open sockets, or `*`. */
   ALLOWED_ORIGINS?: string;
 }
@@ -234,6 +240,24 @@ export class GameRoom extends DurableObject<Env> {
   }
 }
 
+/**
+ * A username's list of games, so the same name shows the same games on every
+ * device. There is no password: whoever types the name sees its games.
+ */
+export class PlayerProfile extends DurableObject<Env> {
+  async get(): Promise<Profile> {
+    return { games: (await this.ctx.storage.get<ProfileGame[]>('games')) ?? [] };
+  }
+
+  async update(change: ProfileUpdate): Promise<Profile> {
+    const games = (await this.get()).games;
+    const next = 'add' in change ? addGame(games, change.add) : forgetGame(games, change.forget);
+    if (next.length) await this.ctx.storage.put('games', next);
+    else await this.ctx.storage.deleteAll();
+    return { games: next };
+  }
+}
+
 function memberOf(ws: WebSocket): string | null {
   const a = ws.deserializeAttachment() as Attachment | null;
   return a?.member ?? null;
@@ -316,6 +340,19 @@ export default {
         }
         const status = await env.ROOMS.getByName(r.code).status(token);
         return status ? json(status, 200, cors) : json({ error: 'no such room' }, 404, cors);
+      }
+      case 'profile': {
+        const profile = env.PROFILES.getByName(r.name);
+        if (!r.update) return json(await profile.get(), 200, cors);
+        let change;
+        try {
+          const text = await request.text();
+          if (text.length > 256) throw new ProtocolError('request too large');
+          change = parseProfileUpdate(JSON.parse(text));
+        } catch (e) {
+          return json({ error: e instanceof ProtocolError ? e.message : 'bad request' }, 400, cors);
+        }
+        return json(await profile.update(change), 200, cors);
       }
       case 'socket':
         if (request.headers.get('Upgrade') !== 'websocket')

@@ -2,6 +2,8 @@ import {
   PING,
   PONG,
   type ClientMessage,
+  type Profile,
+  type ProfileUpdate,
   type RoomMode,
   type RoomStatus,
   type ServerMessage,
@@ -176,4 +178,28 @@ export async function roomStatus(
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`the server answered ${res.status}`);
   return (await res.json()) as RoomStatus;
+}
+
+const profileUrl = (base: string, name: string) =>
+  `${base}/api/players/${encodeURIComponent(name)}`;
+
+/** `GET /api/players/:name`: the games remembered for a username. Throws on network errors. */
+export async function getProfile(base: string, name: string): Promise<Profile> {
+  const res = await fetch(profileUrl(base, name));
+  if (!res.ok) throw new Error(`the server answered ${res.status}`);
+  return (await res.json()) as Profile;
+}
+
+/** `POST /api/players/:name`: remembers a game for a username, or forgets a room. */
+export async function updateProfile(
+  base: string,
+  name: string,
+  change: ProfileUpdate,
+): Promise<void> {
+  const res = await fetch(profileUrl(base, name), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(change),
+  });
+  if (!res.ok) throw new Error(`the server answered ${res.status}`);
 }

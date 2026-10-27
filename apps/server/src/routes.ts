@@ -1,4 +1,4 @@
-import { normaliseCode } from '@hrady/protocol';
+import { normaliseCode, profileKey } from '@hrady/protocol';
 
 /** What a request to the Worker asks for. */
 export type Route =
@@ -7,12 +7,14 @@ export type Route =
   | { kind: 'create' }
   | { kind: 'info'; code: string }
   | { kind: 'status'; code: string }
+  | { kind: 'profile'; name: string; update: boolean }
   | { kind: 'socket'; code: string }
   | { kind: 'notFound' };
 
 /**
  * `POST /api/rooms` creates a room, `GET /api/rooms/:code` describes it,
- * `POST /api/rooms/:code/status` describes it for the holder of a token and
+ * `POST /api/rooms/:code/status` describes it for the holder of a token,
+ * `GET`/`POST /api/players/:name` read and change a username's list of games and
  * `/ws/:code` opens its WebSocket. Codes are case-insensitive.
  */
 export function route(method: string, pathname: string): Route {
@@ -28,6 +30,16 @@ export function route(method: string, pathname: string): Route {
   if (status && method === 'POST') {
     const code = normaliseCode(status[1]!);
     if (code) return { kind: 'status', code };
+  }
+  const player = /^\/api\/players\/([^/]+)\/?$/.exec(pathname);
+  if (player && (method === 'GET' || method === 'POST')) {
+    let name: string | null = null;
+    try {
+      name = profileKey(decodeURIComponent(player[1]!));
+    } catch {
+      // A malformed escape is not a name.
+    }
+    if (name) return { kind: 'profile', name, update: method === 'POST' };
   }
   const ws = /^\/ws\/([^/]+)\/?$/.exec(pathname);
   if (ws && method === 'GET') {

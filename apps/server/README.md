@@ -170,6 +170,17 @@ is for turns hours or days apart (design: [`docs/ASYNC.md`](../../docs/ASYNC.md)
 socket: it sends a stored token and gets the `RoomInfo` (with `mode` and
 `turn`, the seat to move) and its member id.
 
+## Usernames
+
+`GET /api/players/:name` returns `{ games: [{ code, token }] }` (newest first,
+at most 20) and `POST /api/players/:name` takes `{ add: { code, token } }` or
+`{ forget: code }`. Names are case-insensitive and blank names are rejected
+(404). A `PlayerProfile` Durable Object (migration `v3`) holds one name's
+list. There is no password: whoever types the name gets the tokens, which is
+the point (the same name shows the same games on every device) and the
+trade-off. The web client registers a room under the name on every `welcome`
+and prunes rooms that no longer exist.
+
 ## Design decisions
 
 - **Bots run in the host's browser**, as decided in the plan: Worker CPU on

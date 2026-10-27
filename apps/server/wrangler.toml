@@ -11,6 +11,10 @@ ALLOWED_ORIGINS = "https://cebollinos11.github.io,http://localhost:5173"
 name = "ROOMS"
 class_name = "GameRoom"
 
+[[durable_objects.bindings]]
+name = "PROFILES"
+class_name = "PlayerProfile"
+
 # SQLite-backed Durable Objects are the only kind available on the free plan.
 [[migrations]]
 tag = "v1"
@@ -21,3 +25,8 @@ new_sqlite_classes = ["EchoRoom"]
 tag = "v2"
 deleted_classes = ["EchoRoom"]
 new_sqlite_classes = ["GameRoom"]
+
+# Usernames: a list of games per name, so one name shows the same games on every device.
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["PlayerProfile"]

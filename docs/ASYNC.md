@@ -77,6 +77,20 @@ sitting.
 - Leaving an async game does not mention a bot taking over and the game is
   kept in My games, so a local single-player game can be played in between.
 
+## Usernames
+
+There are no accounts and no passwords: your **name is your username**, and
+it must be filled in (a blank name is never valid, and there is no default).
+The server keeps, per username (case-insensitive), the list of rooms and
+tokens that name has joined (`PlayerProfile` Durable Object,
+`GET`/`POST /api/players/:name`, newest first, at most 20). Typing the same
+name on another device lists the same games in **My games** and opens them
+with the stored tokens.
+
+Trade-off, accepted: anyone who types your name sees your games and can
+play your seats, including seeing your hidden shields. Fine among friends; if
+that ever matters, a PIN per name is the next step.
+
 ## Notifications (later)
 
 Deliberately not part of this change. The server knows exactly when it

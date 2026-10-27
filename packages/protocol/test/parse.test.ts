@@ -8,7 +8,9 @@ import {
   normaliseName,
   parseClientMessage,
   parseCreateRoom,
+  parseProfileUpdate,
   parseStatusRequest,
+  profileKey,
 } from '../src';
 
 const parse = (v: unknown) => parseClientMessage(JSON.stringify(v));
@@ -125,6 +127,31 @@ describe('names and codes', () => {
     expect(parseStatusRequest({ token: 'abcdefgh12' })).toEqual({ token: 'abcdefgh12' });
     expect(() => parseStatusRequest({ token: 'short' })).toThrow(ProtocolError);
     expect(() => parseStatusRequest({})).toThrow(ProtocolError);
+  });
+});
+
+describe('usernames', () => {
+  it('keys names case-insensitively and refuses blank ones', () => {
+    expect(profileKey('  Ann  Lee ')).toBe('ann lee');
+    expect(profileKey('ANN')).toBe(profileKey('ann'));
+    expect(profileKey('   ')).toBeNull();
+    expect(profileKey('')).toBeNull();
+  });
+
+  it('parses profile updates', () => {
+    expect(parseProfileUpdate({ add: { code: 'abcde', token: 'abcdefgh12' } })).toEqual({
+      add: { code: 'ABCDE', token: 'abcdefgh12' },
+    });
+    expect(parseProfileUpdate({ forget: 'abcde' })).toEqual({ forget: 'ABCDE' });
+    for (const bad of [
+      null,
+      {},
+      { add: {} },
+      { add: { code: 'ab', token: 'abcdefgh12' } },
+      { add: { code: 'ABCDE', token: 'x' } },
+      { forget: 5 },
+    ])
+      expect(() => parseProfileUpdate(bad), JSON.stringify(bad)).toThrow(ProtocolError);
   });
 });
 

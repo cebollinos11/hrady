@@ -33,6 +33,8 @@ export type LobbyScreen =
 
 export interface LobbyHandlers {
   create(name: string, players: number, mode: RoomMode): void;
+  /** The name field was changed: games are listed per username. */
+  rename(name: string): void;
   /** Opens one of this browser's games. */
   open(code: string): void;
   join(name: string, code: string): void;
@@ -152,10 +154,18 @@ function entry(screen: Extract<LobbyScreen, { kind: 'entry' }>, on: LobbyHandler
     },
     { disabled: screen.busy || !screen.configured, id: 'online-join' },
   );
+  name.onchange = () => {
+    if (name.value.trim()) on.rename(name.value);
+  };
   code.onkeydown = (e) => e.key === 'Enter' && join.click();
   const out: Node[] = [
     h('h2', {}, 'Play online'),
     h('label', {}, 'Your name ', name),
+    h(
+      'p',
+      { className: 'hint' },
+      'Your name is your username: use the same one on every device to see the same games. Anyone who types it sees them.',
+    ),
     h('div', { id: 'online-games' }, ...gamesList(screen.games, on)),
     h(
       'div',
