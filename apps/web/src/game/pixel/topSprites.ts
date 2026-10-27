@@ -158,31 +158,3 @@ export function topKnight(size: FigureSize, colour: string): Sprite {
   knights.set(key, s);
   return s;
 }
-
-const trees: Sprite[] = [];
-
-/** A round treetop with a shadow under it; two kinds of green. */
-export function topTree(kind: number): Sprite {
-  const i = kind % 2;
-  if (trees[i]) return trees[i]!;
-  const [dark, mid, light] =
-    i === 0 ? ['#2a6230', '#38803c', '#56a54c'] : ['#356f2f', '#4a933f', '#74b95a'];
-  trees[i] = build(14, 15, [7, 12], (ctx) => {
-    const disc = (cx: number, cy: number, r: number, c: string) => {
-      ctx.fillStyle = c;
-      for (let dy = -r; dy <= r; dy++) {
-        const w = Math.round(Math.sqrt(Math.max(0, (r + 0.5) ** 2 - dy * dy)));
-        ctx.fillRect(cx - w, cy + dy, 2 * w + 1, 1);
-      }
-    };
-    ctx.globalAlpha = 0.35;
-    disc(8, 12, 5, '#000000');
-    ctx.globalAlpha = 1;
-    disc(7, 7, 6, dark);
-    disc(6, 6, 5, mid);
-    disc(5, 4, 3, light);
-    ctx.fillStyle = lighten(light, 0.3);
-    ctx.fillRect(4, 3, 2, 1);
-  });
-  return trees[i]!;
-}

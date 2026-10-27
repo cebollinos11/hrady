@@ -32,7 +32,7 @@ import type { Knights } from './steps';
 /**
  * A pixel-art view of the board. Everything is drawn into a small canvas that
  * the browser scales up without smoothing, so one art pixel is a block of
- * screen pixels. The ground is drawn once; castles, knights and trees are
+ * screen pixels. The ground is drawn once; castles and knights are
  * sprites sorted back to front each frame. A `Look` says how the world is
  * projected and drawn, the rest is the same.
  */
@@ -761,7 +761,6 @@ export class PixelScene implements BoardView {
     this.paintGround(ctx);
 
     const things: Drawable[] = [];
-    this.collectTrees(things, ox, oy);
     this.collectCastles(things);
     this.collectKnights(things);
     things.sort((a, b) => a.depth - b.depth);
@@ -821,19 +820,6 @@ export class PixelScene implements BoardView {
     for (const [id, count] of m.sources) mark(id, HIGHLIGHT.source, count ? 2 : 1, !count);
     if (m.shield) mark(m.shield, HIGHLIGHT.shield, 3, true, 2);
     for (const id of this.pings) mark(id, '#ffffff', 2, true, 1);
-  }
-
-  private collectTrees(out: Drawable[], ox: number, oy: number) {
-    const margin = 24;
-    for (const tree of this.terrain.trees) {
-      const a = this.ground(tree.p);
-      const sx = a.x + ox;
-      const sy = a.y + oy;
-      if (sx < -margin || sy < -margin * 2 || sx > this.width + margin || sy > this.height + margin)
-        continue;
-      const s = this.look.tree(tree.kind);
-      out.push({ depth: tree.p.x + tree.p.z, draw: (ctx) => blit(ctx, s, a.x, a.y) });
-    }
   }
 
   private collectCastles(out: Drawable[]) {

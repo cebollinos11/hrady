@@ -1,9 +1,9 @@
 import { START_SIZE, type Layout, type Point } from './layout';
-import { TILE, placeTrees, sampleGround, tileCentre, type Look, type Terrain } from './look';
+import { TILE, sampleGround, tileCentre, type Look, type Terrain } from './look';
 import { drawPaths, ellipse, hash } from './pixel/draw';
 import { drawText, textWidth } from './pixel/font';
 import { canvasOf, darken, lighten } from './pixel/sprites';
-import { TOP_FIGURE_HEIGHT, topCastle, topKnight, topTree } from './pixel/topSprites';
+import { TOP_FIGURE_HEIGHT, topCastle, topKnight } from './pixel/topSprites';
 
 /**
  * The top-down look: the board as a map seen from straight above, in the
@@ -105,7 +105,7 @@ function buildTerrain(layout: Layout): Terrain {
       drawText(ctx, text, a.x - Math.floor(textWidth(text) / 2), a.y - 2, '#7a1c16');
     }
   }
-  return { canvas, left, top, nx, nz, x0, z0, levels, water, trees: placeTrees(layout, grid) };
+  return { canvas, left, top, nx, nz, x0, z0, levels, water };
 }
 
 export const TOP_LOOK: Look = {
@@ -116,7 +116,6 @@ export const TOP_LOOK: Look = {
   terrain: buildTerrain,
   castle: topCastle,
   knight: topKnight,
-  tree: topTree,
   knightHeight: TOP_FIGURE_HEIGHT,
   across: (dx) => ({ x: dx, z: 0 }),
   front: { x: 0, z: 0.75 },
