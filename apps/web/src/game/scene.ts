@@ -629,7 +629,8 @@ export class BoardScene {
     this.rig.resize(w, h);
   }
 
-  render(now: number) {
+  /** Advances tweens and the camera; draws the frame unless `draw` is false. */
+  render(now: number, draw = true) {
     const running = this.tweens;
     this.tweens = [];
     for (const t of running) {
@@ -642,6 +643,7 @@ export class BoardScene {
     for (const m of [...this.highlights.children, ...this.pings.children] as THREE.Mesh[])
       if (m.userData.pulse) (m.material as THREE.MeshBasicMaterial).opacity = pulse;
     this.rig.update(now);
+    if (!draw) return;
     this.faceShields();
     this.sizeSprites();
     this.renderer.render(this.scene, this.rig.camera);

@@ -1267,8 +1267,11 @@ function layout() {
 new ResizeObserver(layout).observe($('#panel'));
 window.addEventListener('resize', layout);
 
+/** Draw every n-th frame only; browser tests turn this up to save CPU. */
+let drawEvery = 1;
+let frame = 0;
 scene.renderer.setAnimationLoop((now) => {
-  scene.render(now);
+  scene.render(now, frame++ % drawEvery === 0);
   die.update(now);
 });
 
@@ -1309,6 +1312,7 @@ if (import.meta.env.DEV)
           connected: online.conn.connected,
         },
       interactive: () => interactive(),
+      drawEvery: (n: number) => (drawEvery = Math.max(1, Math.floor(n))),
       perform: (action: Action) => perform(action),
       legal: () => legalActions(session.state, session.state.current),
       view: () => viewFor(shown, viewer()),

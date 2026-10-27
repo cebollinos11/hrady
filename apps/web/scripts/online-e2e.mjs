@@ -44,19 +44,22 @@ function checkFrame(name, text) {
 }
 
 async function open(name, path = '/') {
-  // Small windows: every page renders the 3D board in software.
+  // Small windows, drawn about once a second: every page renders the board in software.
   const context = await browser.newContext({ viewport: { width: 900, height: 600 } });
-  await context.addInitScript(() =>
-    localStorage.setItem(
-      'hrady-settings',
-      JSON.stringify({ animations: 'off', botSpeed: 'fast', passScreen: false }),
-    ),
-  );
+  await context.addInitScript(() => {
+    if (location.protocol.startsWith('http'))
+      localStorage.setItem(
+        'hrady-settings',
+        JSON.stringify({ animations: 'off', botSpeed: 'fast', passScreen: false }),
+      );
+  });
   const page = await context.newPage();
   page.setDefaultTimeout(120_000);
   page.on('pageerror', (e) => problems.push(`${name}: ${e.message}`));
   page.on('websocket', (ws) => ws.on('framereceived', (f) => checkFrame(name, String(f.payload))));
   await page.goto(WEB + path);
+  await page.waitForFunction(() => window.hrady);
+  await page.evaluate(() => window.hrady.drawEvery(60));
   return { name, context, page };
 }
 
@@ -125,6 +128,7 @@ log('game started:', HUMANS.join(', '), '+', BOTS.join(', '));
 let spectator = null;
 let refreshed = false;
 let hostGone = null;
+let goneAt = 0;
 let hostBack = false;
 let sawHandOff = false;
 let sawAway = false;
@@ -137,9 +141,23 @@ for (;;) {
   const ref = present[present.length - 1];
   const length = await logLength(ref);
   const state = await ref.page.evaluate(() => window.hrady.session().state.phase);
-  if (state === 'over') break;
+  if (state === 'over') {
+    if (hostGone) {
+      const info = await ref.page.evaluate(() => {
+        const s = window.hrady.session();
+        return {
+          length: s.log.length,
+          turn: s.state.turn,
+          last: s.log.slice(-3),
+          castles: Object.values(s.state.castles).filter((c) => c.owner !== null).length,
+        };
+      });
+      fail(`game over while the host is away: ${JSON.stringify(info)}`);
+    }
+    break;
+  }
 
-  if (!spectator && length >= 30) {
+  if (!spectator && length >= 10) {
     spectator = await open('Dan', `/?room=${code}`);
     await join(spectator, 'Dan');
     await spectator.page.waitForFunction(() => window.hrady.online()?.inGame);
@@ -148,18 +166,20 @@ for (;;) {
     log('spectator joined at action', length);
   }
 
-  if (!refreshed && length >= 60) {
+  if (!refreshed && length >= 25) {
     refreshed = true;
     const bea = humans[1];
     await bea.page.reload();
-    await bea.page.waitForFunction(() => window.hrady.online()?.inGame);
+    await bea.page.waitForFunction(() => window.hrady?.online()?.inGame);
+    await bea.page.evaluate(() => window.hrady.drawEvery(60));
     const o = await online(bea);
     if (o.seat !== 1) fail(`Bea came back in seat ${o.seat}`);
     log('Bea refreshed at action', length, 'and has her seat back');
   }
 
-  if (!hostGone && length >= 120) {
+  if (!hostGone && !hostBack && length >= 40) {
     hostGone = ann;
+    goneAt = length;
     await ann.page.goto('about:blank');
     log('Ann (the host) left at action', length);
   }
@@ -170,11 +190,12 @@ for (;;) {
     if (o.room.host !== 'm1') sawHandOff = true;
     if (annSeat.away) sawAway = true;
     // Back once a bot has played for her for a while.
-    if (sawAway && sawHandOff && (await logLength(ref)) > length + 10) {
+    if (sawAway && sawHandOff && length > goneAt + 20) {
       hostBack = true;
       hostGone = null;
       await ann.page.goto(`${WEB}/?room=${code}`);
-      await ann.page.waitForFunction(() => window.hrady.online()?.inGame);
+      await ann.page.waitForFunction(() => window.hrady?.online()?.inGame);
+      await ann.page.evaluate(() => window.hrady.drawEvery(60));
       const back = await online(ann);
       if (back.seat !== 0) fail(`Ann came back in seat ${back.seat}`);
       log('Ann is back at action', await logLength(ann), 'host is now', back.room.host);
@@ -189,13 +210,15 @@ const everyone = [...humans, spectator];
 for (const c of everyone) await c.page.waitForFunction(() => !window.hrady.busy());
 const lengths = await Promise.all(everyone.map(logLength));
 if (new Set(lengths).size !== 1) fail(`clients disagree on the log: ${lengths}`);
-const winners = await ann.page.textContent('#controls');
+const winners = await ann.page.textContent('#controls .offer');
 log('game over after', lengths[0], 'actions:', winners.trim());
 const spectatorView = await spectator.page.evaluate(() => window.hrady.view());
 if (spectatorView.viewer !== null || spectatorView.ownShields !== null)
   fail('the spectator sees a player view');
 if (!sawHandOff) fail('the AI host was never handed over');
 if (!sawAway) fail('no bot took over the absent host');
+await ann.page.evaluate(() => window.hrady.drawEvery(1));
+await ann.page.waitForTimeout(500);
 await ann.page.screenshot({ path: process.env.SCREENSHOT ?? 'online-e2e.png' });
 if (problems.length) fail(problems.slice(0, 10).join('\n'));
 log('OK: full game, refresh, host hand-off, takeover, spectator, no leaks');
