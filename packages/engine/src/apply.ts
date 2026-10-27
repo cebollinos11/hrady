@@ -1,5 +1,5 @@
 import { randomInt } from './rng';
-import { castleDefence, validateAction } from './rules';
+import { canStepOff, castleDefence, validateAction } from './rules';
 import { score } from './score';
 import {
   addKnights,
@@ -79,7 +79,12 @@ export function apply(state: GameState, action: Action): ApplyResult {
       events.push({ type: 'rolled', player, value });
       const start = ctx.board.startFor(value).id;
       if (knightsAt(s, start, player) > 0) {
-        events.push({ type: 'placementSkipped', player, start });
+        if (canStepOff(s, ctx, start, player)) {
+          s.pendingSpawn = start;
+          events.push({ type: 'spawnBlocked', player, start });
+        } else {
+          events.push({ type: 'placementSkipped', player, start });
+        }
       } else {
         addKnights(s, start, player, 1);
         events.push({ type: 'knightPlaced', player, start });
@@ -93,6 +98,11 @@ export function apply(state: GameState, action: Action): ApplyResult {
       addKnights(s, to, player, count);
       s.mp -= 1;
       events.push({ type: 'moved', player, from, to, count });
+      if (s.pendingSpawn === from) {
+        s.pendingSpawn = null;
+        addKnights(s, from, player, 1);
+        events.push({ type: 'knightPlaced', player, start: from });
+      }
       break;
     }
 

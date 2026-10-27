@@ -27,6 +27,11 @@ function canEnter(state: GameState, ctx: BoardContext, node: string, player: Pla
   }
 }
 
+/** Whether a knight on `start` has somewhere to step to, so a new one may spawn there. */
+export function canStepOff(state: GameState, ctx: BoardContext, start: string, player: PlayerId) {
+  return ctx.neighbours(start).some((to) => canEnter(state, ctx, to, player));
+}
+
 /** Defence of a castle: swords if neutral, else garrison plus shield. */
 export function castleDefence(state: GameState, ctx: BoardContext, castle: string) {
   const c = state.castles[castle];
@@ -84,6 +89,8 @@ export function validateAction(state: GameState, action: Action): string | null 
 
   const ctx = boardContext(state.config);
   const player = action.player;
+  if (state.pendingSpawn !== null && (action.type !== 'move' || action.from !== state.pendingSpawn))
+    return `the knight on ${state.pendingSpawn} must move away first`;
   switch (action.type) {
     case 'endTurn':
       return null;
@@ -187,6 +194,13 @@ export function legalActions(state: GameState, player: PlayerId): Action[] {
 
   const ctx = boardContext(state.config);
   const actions: Action[] = [];
+  if (state.pendingSpawn !== null) {
+    const from = state.pendingSpawn;
+    for (const to of ctx.neighbours(from))
+      if (canEnter(state, ctx, to, player))
+        actions.push({ type: 'move', player, from, to, count: 1 });
+    return actions;
+  }
   if (state.pendingShield !== null)
     actions.push({ type: 'placeShield', player, castle: state.pendingShield });
 

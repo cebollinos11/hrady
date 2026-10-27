@@ -1,4 +1,4 @@
-import { apply, validateAction, type Action, type GameState } from '@hrady/engine';
+import { apply, legalActions, validateAction, type Action, type GameState } from '@hrady/engine';
 import { evaluate, type Perspective } from './evaluate';
 import { determinize, expectedShields, type Observation } from './knowledge';
 import { planTurn, planTurns, wantsShield, type Plan, type ShieldOdds } from './plan';
@@ -60,6 +60,13 @@ function settleShield(state: GameState): GameState {
   return apply(state, action).state;
 }
 
+/** Steps the first knight that must move off its start area, when a plan left that undone. */
+function settleSpawn(state: GameState): GameState {
+  if (state.pendingSpawn === null) return state;
+  const move = legalActions(state, state.current)[0];
+  return move ? apply(state, move).state : state;
+}
+
 /**
  * Plays `plan` for the root player in a sampled world, then every player's
  * turns for `rounds` rounds with the heuristic planner, and scores the result
@@ -79,7 +86,7 @@ function simulate(
     if (state.phase !== 'move' || validateAction(state, action) !== null) break;
     state = apply(state, action).state;
   }
-  if (state.phase === 'move') state = settleShield(state);
+  if (state.phase === 'move') state = settleSpawn(settleShield(state));
 
   const turns = options.rounds * state.config.players;
   for (let t = 0; t < turns && state.phase !== 'over'; t++) {

@@ -34,7 +34,7 @@ const neutralCount = (state: GameState) =>
 
 /** Identity of a position: knights, castle owners, the pending shield and the MP left. */
 export function positionKey(state: GameState, withMp = true): string {
-  let key = `${state.turn}|${withMp ? state.mp : ''}|${state.pendingShield}|`;
+  let key = `${state.turn}|${withMp ? state.mp : ''}|${state.pendingShield}|${state.pendingSpawn}|`;
   // Board order rather than sorting the occupied ids: same key, less work.
   for (const id of boardContext(state.config).order) {
     const counts = state.knights[id];
@@ -117,10 +117,13 @@ export function planTurns(
   odds: ShieldOdds,
   options: PlanOptions & { count: number; diversity?: number },
 ): Plan[] {
-  const plans: Candidate[] = [{ actions: [], value: evaluate(state, persp), state }];
+  const rootValue = evaluate(state, persp);
+  // A knight that has to step off its start area first means the turn cannot end as it is.
+  const plans: Candidate[] =
+    state.pendingSpawn === null ? [{ actions: [], value: rootValue, state }] : [];
   if (state.phase !== 'move') return plans.map(({ actions, value }) => ({ actions, value }));
 
-  let frontier: Node[] = [{ state, actions: [], value: plans[0]!.value }];
+  let frontier: Node[] = [{ state, actions: [], value: rootValue }];
   // Positions already reached, with the most MP they were reached with.
   const seen = new Map([[positionKey(state, false), state.mp]]);
   while (frontier.length) {

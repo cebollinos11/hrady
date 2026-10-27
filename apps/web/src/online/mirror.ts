@@ -34,6 +34,7 @@ export function stateFromView(view: GameView): GameState {
     castles,
     shields,
     pendingShield: view.pendingShield,
+    pendingSpawn: view.pendingSpawn,
     end: view.end && { ...view.end },
   };
 }

@@ -134,6 +134,7 @@ export function determinize(obs: Observation, random: Random): GameState {
     castles,
     shields,
     pendingShield: view.pendingShield,
+    pendingSpawn: view.pendingSpawn,
     end: view.end && { ...view.end },
   };
 }

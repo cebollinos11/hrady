@@ -82,6 +82,11 @@ export interface GameState {
   shields: number[][];
   /** Castle just conquered by the current player, which may get a shield now. */
   pendingShield: string | null;
+  /**
+   * Start area the current player rolled while already holding a knight there:
+   * that knight must step off with the first move, then the new one spawns.
+   */
+  pendingSpawn: string | null;
   /** Set when the game is over. */
   end: { player: PlayerId; lastCastle: string } | null;
 }
@@ -106,6 +111,8 @@ export type GameEvent =
   | { type: 'rolled'; player: PlayerId; value: number }
   | { type: 'knightPlaced'; player: PlayerId; start: string }
   | { type: 'placementSkipped'; player: PlayerId; start: string }
+  /** The start area is occupied by the player's own knight: it must move off before a new one spawns. */
+  | { type: 'spawnBlocked'; player: PlayerId; start: string }
   | { type: 'moved'; player: PlayerId; from: string; to: string; count: number }
   | {
       type: 'fieldBattle';
@@ -182,6 +189,7 @@ export interface GameView {
   /** The viewer's own unplaced shield values; `null` for a spectator. */
   ownShields: number[] | null;
   pendingShield: string | null;
+  pendingSpawn: string | null;
   end: { player: PlayerId; lastCastle: string } | null;
 }
 

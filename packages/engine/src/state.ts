@@ -104,6 +104,7 @@ export function initialState(config: GameConfig, seed: number): GameState {
     castles,
     shields: Array.from({ length: resolved.players }, () => [...resolved.rules.shieldValues]),
     pendingShield: null,
+    pendingSpawn: null,
     end: null,
   };
 }

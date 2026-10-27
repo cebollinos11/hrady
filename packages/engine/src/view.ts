@@ -29,6 +29,7 @@ export function viewFor(state: GameState, viewer: PlayerId | null): GameView {
     shieldsLeft: state.shields.map((s) => s.length),
     ownShields: viewer === null ? null : [...(state.shields[viewer] ?? [])],
     pendingShield: state.pendingShield,
+    pendingSpawn: state.pendingSpawn,
     end: state.end && { ...state.end },
   };
 }

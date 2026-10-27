@@ -4,6 +4,7 @@ import {
   IllegalActionError,
   apply,
   initialState,
+  boardContext,
   legalActions,
   validateAction,
   type Action,
@@ -77,16 +78,41 @@ describe('roll and place', () => {
     expect(state).toMatchObject({ phase: 'move', mp: 3, roll: 4 });
   });
 
-  it('skips placement when the player already has a knight there', () => {
-    let state = fresh();
+  it('makes the old knight step off first, then spawns the new one', () => {
+    const state = fresh();
     state.knights.s2 = [1, 0, 0];
     const { state: next, events } = apply(rigRoll(state, 2), { type: 'roll', player: 0 });
-    expect(events[1]).toEqual({ type: 'placementSkipped', player: 0, start: 's2' });
+    expect(events[1]).toEqual({ type: 'spawnBlocked', player: 0, start: 's2' });
+    expect(next).toMatchObject({ pendingSpawn: 's2', mp: 3 });
     expect(next.knights.s2).toEqual([1, 0, 0]);
-    expect(next.mp).toBe(3);
 
-    // Other colours on the start area do not stop the placement.
-    state = fresh();
+    const moves = legalActions(next, 0);
+    expect(moves.length).toBeGreaterThan(0);
+    expect(moves.every((a) => a.type === 'move' && a.from === 's2' && a.count === 1)).toBe(true);
+    expect(validateAction(next, { type: 'endTurn', player: 0 })).toMatch(/must move away/);
+
+    const first = moves[0]! as Extract<Action, { type: 'move' }>;
+    const { state: after, events: moved } = apply(next, first);
+    expect(moved.map((e) => e.type)).toEqual(['moved', 'knightPlaced']);
+    expect(after).toMatchObject({ pendingSpawn: null, mp: 2 });
+    expect(after.knights.s2).toEqual([1, 0, 0]);
+    expect(after.knights[first.to]).toEqual([1, 0, 0]);
+  });
+
+  it('falls back to no spawn and 3 MP when enemies surround the start', () => {
+    const state = fresh();
+    state.knights.s2 = [1, 0, 0];
+    const ctx = boardContext(state.config);
+    for (const n of ctx.neighbours('s2')) state.knights[n] = [0, 1, 0];
+    const { state: next, events } = apply(rigRoll(state, 2), { type: 'roll', player: 0 });
+    expect(events[1]).toEqual({ type: 'placementSkipped', player: 0, start: 's2' });
+    expect(next).toMatchObject({ pendingSpawn: null, mp: 3 });
+    expect(next.knights.s2).toEqual([1, 0, 0]);
+  });
+
+  it('places normally when only other colours are on the start area', () => {
+    const state = fresh();
+    state.knights.s2 = [0, 3, 1];
     state.knights.s2 = [0, 3, 1];
     expect(apply(rigRoll(state, 2), { type: 'roll', player: 0 }).state.knights.s2).toEqual([
       1, 3, 1,

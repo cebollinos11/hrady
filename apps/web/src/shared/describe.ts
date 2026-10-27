@@ -71,6 +71,7 @@ export function eventNodes(e: GameEvent): string[] {
   switch (e.type) {
     case 'knightPlaced':
     case 'placementSkipped':
+    case 'spawnBlocked':
       return [e.start];
     case 'moved':
       return [e.from, e.to];
@@ -110,7 +111,9 @@ export function describeEvent(
     case 'knightPlaced':
       return `${who} places a knight on ${at(e.start)}`;
     case 'placementSkipped':
-      return `${who} already has a knight on ${at(e.start)}: no placement`;
+      return `${who} already has a knight on ${at(e.start)} and cannot move it off: no placement`;
+    case 'spawnBlocked':
+      return `${who} already has a knight on ${at(e.start)}: it must move away before a new one spawns`;
     case 'moved':
       return `${who} moves ${knights(e.count)} ${route([at(e.from), at(e.to)])}`;
     case 'fieldBattle': {

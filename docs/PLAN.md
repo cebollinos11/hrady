@@ -20,7 +20,10 @@ the decisions in §5 apply.
 
 **Turn**
 1. **Roll & place** — roll d6, place 1 knight from supply on start area *N*.
-   Skipped if you already have a knight there. Supply is unlimited.
+   If you already have a knight there, your first move (1 MP) must take it
+   off the start area; then the new knight is placed, leaving 2 MP. If every
+   neighbour is held by an enemy, no knight is placed and you keep 3 MP.
+   Supply is unlimited.
 2. **Move** — 3 movement points (MP). 1 MP moves any stack (or any subset of
    a stack) one step along a connection. Splitting points
    across stacks is free.

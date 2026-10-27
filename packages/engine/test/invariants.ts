@@ -58,6 +58,13 @@ export function checkInvariants(state: GameState): string[] {
     }
   }
 
+  if (state.pendingSpawn !== null) {
+    if (state.phase !== 'move' || state.mp !== rules.movePoints)
+      errors.push('pending spawn after movement points were spent');
+    if ((state.knights[state.pendingSpawn]?.[state.current] ?? 0) < 1)
+      errors.push('pending spawn without a knight to move off');
+  }
+
   if (state.pendingShield !== null) {
     if (state.castles[state.pendingShield]?.owner !== state.current)
       errors.push('pending shield on a castle the current player does not own');

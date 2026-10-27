@@ -43,6 +43,7 @@ export function planSteps(events: readonly GameEvent[]): Step[] {
         case 'knightPlaced':
           return { kind: 'place', player: e.player, start: e.start };
         case 'placementSkipped':
+        case 'spawnBlocked':
           return { kind: 'skip', player: e.player, start: e.start };
         case 'moved':
           return {
