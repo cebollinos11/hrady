@@ -11,14 +11,23 @@
     <canvas id="top"></canvas>
 
     <header class="topbar">
-      <strong class="brand">Hrady</strong>
-      <button id="new-game" title="Start a new game">New game</button>
-      <button id="online-button" title="Play with others over the internet">Online</button>
-      <button id="room-chip" class="room-chip" title="Copy the invite link" hidden></button>
-      <button id="dev-demo" title="Dev only: play the animation demo" hidden>▶ Demo</button>
-      <button id="dev-midgame" title="Dev only: load a game in mid-play, 1 human + 3 bots" hidden>
-        ⏩ Mid-game
-      </button>
+      <button id="settings-button" class="icon" title="Menu" aria-label="Menu" aria-expanded="false">☰</button>
+      <div class="turn">
+        <div id="status"></div>
+      </div>
+      <button id="info-button" class="icon" title="Players and log (I)" aria-label="Players and log" aria-expanded="false">≣</button>
+    </header>
+
+    <div id="settings" class="popover" hidden>
+      <div class="row menu-main">
+        <button id="new-game" title="Start a new game">New game</button>
+        <button id="online-button" title="Play with others over the internet">Online</button>
+        <button id="room-chip" class="room-chip" title="Copy the invite link" hidden></button>
+        <button id="dev-demo" title="Dev only: play the animation demo" hidden>▶ Demo</button>
+        <button id="dev-midgame" title="Dev only: load a game in mid-play, 1 human + 3 bots" hidden>
+          ⏩ Mid-game
+        </button>
+      </div>
       <span class="cams" role="group" aria-label="Camera">
         <button data-cam="overview" title="Whole board (1)">Board</button>
         <button data-cam="table" title="Table view (2)">Table</button>
@@ -29,10 +38,6 @@
           Zoom
         </button>
       </span>
-      <button id="settings-button" title="Settings" aria-expanded="false">⚙</button>
-    </header>
-
-    <div id="settings" class="popover" hidden>
       <label
         >Bots
         <select id="bot-speed">
@@ -57,28 +62,32 @@
         ><input id="trails" type="checkbox" /> Last moves (T)</label
       >
       <p class="help">
-        Drag to pan, wheel or pinch to zoom. Click one of your stacks, then a highlighted target.
-        Hover a log line to see where it happened. Keys: R roll, E end turn, S shield, Z undo, Esc
-        cancel, 1–3 camera (press 3 again for your next stack).
+        Drag to pan, wheel or pinch to zoom. Click one of your stacks (white ring), then a
+        highlighted target: a green node to walk there (the number is the MP it costs), an orange
+        castle to attack it, or a red-ringed enemy marker to plan an attack. Hover a log line to see
+        where it happened. Keys: R roll, E end turn, S shield, Z undo, Enter attack, Esc cancel, 1–3
+        camera (press 3 again for your next stack), I info.
       </p>
       <p><a href="debug.html">2D debug client →</a></p>
     </div>
 
-    <aside id="panel" class="panel">
-      <section class="turn">
-        <canvas id="die" width="72" height="72" title="Die"></canvas>
-        <div id="status"></div>
-      </section>
-      <section id="controls"></section>
-      <section id="selection"></section>
+    <aside id="panel" class="panel" hidden>
       <section>
         <table id="players" class="players"></table>
       </section>
       <section id="log-box" class="log-box">
-        <button id="log-toggle" class="link" aria-expanded="true">Log</button>
+        <h3>Log</h3>
         <ol id="log"></ol>
       </section>
     </aside>
+
+    <div id="dock" class="dock">
+      <section id="selection"></section>
+      <div class="dock-row">
+        <canvas id="die" width="72" height="72" title="Die"></canvas>
+        <section id="controls"></section>
+      </div>
+    </div>
 
     <div id="tooltip" class="tooltip" hidden></div>
     <div id="toast" class="toast" hidden></div>

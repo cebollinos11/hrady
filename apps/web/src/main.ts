@@ -828,11 +828,13 @@ $('#dev-demo').addEventListener('click', () => void playDemo());
 $('#dev-midgame').addEventListener('click', loadMidGame);
 $('#game-over-new').addEventListener('click', () => (online ? leaveOnline() : openSetup()));
 $('#game-over-close').addEventListener('click', () => ($('#game-over').hidden = true));
-$('#log-toggle').addEventListener('click', () => {
-  const collapsed = $('#log-box').classList.toggle('collapsed');
-  $('#log-toggle').setAttribute('aria-expanded', String(!collapsed));
-  if (!collapsed) $('#log').scrollTop = $('#log').scrollHeight;
-});
+
+function toggleInfo(open = $('#panel').hidden) {
+  $('#panel').hidden = !open;
+  $('#info-button').setAttribute('aria-expanded', String(open));
+  if (open) $('#log').scrollTop = $('#log').scrollHeight;
+}
+$('#info-button').addEventListener('click', () => toggleInfo());
 $('#reveal').addEventListener('click', () => {
   curtain = null;
   render();
@@ -1407,6 +1409,10 @@ window.addEventListener('keydown', (e) => {
     camera(cams[e.key]!);
     return;
   }
+  if (e.key === 'i') {
+    toggleInfo();
+    return;
+  }
   if (e.key === 'l') {
     updateSettings({ labels: !settings.labels });
     return;
@@ -1459,19 +1465,24 @@ window.addEventListener('keydown', (e) => {
 
 // --- Layout and frame loop ---------------------------------------------------------
 
-/** Sizes the board view to the part of the window the panel leaves free. */
+/**
+ * Sizes the board view to the window minus a fixed strip for the dock. The HUD
+ * floats over the board and never changes this, so it only runs when the window
+ * resizes (resizing the canvas clears it and refits the board).
+ */
+const TOP_INSET = 56;
+let sized = '';
 function layout() {
-  const panel = $('#panel').getBoundingClientRect();
-  scene.rig.insetTop = $('.topbar').getBoundingClientRect().bottom;
-  const bottomSheet = panel.left < 20;
-  const width = bottomSheet ? window.innerWidth : panel.left - 10;
-  const height = bottomSheet ? panel.top + 12 : window.innerHeight;
-  scene.canvas.style.width = `${Math.max(1, width)}px`;
-  scene.canvas.style.height = `${Math.max(1, height)}px`;
+  const dock = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dock-height'));
+  const [w, h] = [window.innerWidth, Math.max(1, window.innerHeight - dock)];
+  if (sized === `${w}x${h}`) return;
+  sized = `${w}x${h}`;
+  scene.rig.insetTop = TOP_INSET;
+  scene.canvas.style.width = `${w}px`;
+  scene.canvas.style.height = `${h}px`;
   scene.resize();
 }
 
-new ResizeObserver(layout).observe($('#panel'));
 window.addEventListener('resize', layout);
 
 /** Draw every n-th frame only; browser tests turn this up to save CPU. */
@@ -1485,7 +1496,6 @@ const loop = (now: number) => {
 requestAnimationFrame(loop);
 
 applySettings();
-if (window.matchMedia('(max-width: 760px)').matches) $('#log-box').classList.add('collapsed');
 layout();
 scene.rig.go('overview', [], true);
 if (

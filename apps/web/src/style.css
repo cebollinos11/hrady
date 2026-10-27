@@ -6,7 +6,8 @@
   --line: rgb(255 255 255 / 14%);
   --accent: #e2b33c;
   --bad: #ff8f80;
-  --panel-width: 330px;
+  --panel-width: 320px;
+  --dock-height: 76px;
   color-scheme: dark;
 }
 
@@ -111,17 +112,19 @@ a {
   vertical-align: -1px;
 }
 
-/* --- Top bar ------------------------------------------------------------ */
+/* --- Top bar: menu, whose turn it is, info ------------------------------ */
 
 .topbar {
   position: fixed;
   top: max(10px, env(safe-area-inset-top));
   left: 10px;
-  right: calc(var(--panel-width) + 20px);
+  right: 10px;
+  z-index: 12;
+  height: 36px;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 8px;
   pointer-events: none;
 }
 
@@ -129,26 +132,47 @@ a {
   pointer-events: auto;
 }
 
-.topbar button {
+.topbar button.icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
   background: var(--glass);
   backdrop-filter: blur(4px);
+  font-size: 18px;
+  line-height: 1;
 }
 
-.brand {
-  margin-right: 4px;
-  padding: 4px 10px;
-  border-radius: 6px;
+.turn {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 5px 14px;
+  border-radius: 18px;
   background: var(--glass);
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 18px;
-  letter-spacing: 0.5px;
+  backdrop-filter: blur(4px);
+  text-align: center;
+}
+
+#status h2 {
+  display: inline;
+  margin: 0;
+  font-size: 15px;
+}
+
+#status p {
+  display: inline;
+  margin: 0 0 0 6px;
+  color: var(--ink-dim);
+  font-size: 12.5px;
 }
 
 .cams {
-  display: inline-flex;
+  display: flex;
 }
 
 .cams button {
+  flex: 1;
   border-radius: 0;
 }
 
@@ -162,14 +186,17 @@ a {
 
 .popover {
   position: fixed;
-  top: calc(max(10px, env(safe-area-inset-top)) + 42px);
+  top: calc(max(10px, env(safe-area-inset-top)) + 44px);
   left: 10px;
   z-index: 20;
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: 270px;
+  max-height: calc(100vh - 70px);
+  box-sizing: border-box;
   padding: 12px 14px;
+  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--glass-strong);
@@ -196,13 +223,13 @@ a {
   line-height: 1.4;
 }
 
-/* --- Side panel --------------------------------------------------------- */
+/* --- Info drawer: players and log, hidden until asked for ----------------- */
 
 .panel {
   position: fixed;
-  top: 10px;
+  top: calc(max(10px, env(safe-area-inset-top)) + 44px);
   right: 10px;
-  bottom: 10px;
+  bottom: calc(var(--dock-height) + 10px);
   z-index: 10;
   display: flex;
   flex-direction: column;
@@ -212,7 +239,7 @@ a {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: var(--glass);
+  background: var(--glass-strong);
   backdrop-filter: blur(6px);
   overflow: hidden;
 }
@@ -221,35 +248,106 @@ a {
   display: none;
 }
 
-.turn {
+.panel h3 {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* --- Dock: the actions, over the bottom of the board ---------------------- */
+
+.dock {
+  position: fixed;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  left: 50%;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 20px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.dock > *,
+.dock-row > * {
+  pointer-events: auto;
+}
+
+.dock section:empty {
+  display: none;
+}
+
+.dock-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  pointer-events: none;
 }
 
 #die {
   flex: none;
-  width: 72px;
-  height: 72px;
+  width: 56px;
+  height: 56px;
   border: 2px solid var(--line);
   border-radius: 12px;
-  background: rgb(0 0 0 / 25%);
+  background: var(--glass);
 }
 
-#status h2 {
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: min(520px, calc(100vw - 96px));
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--glass);
+  backdrop-filter: blur(4px);
+}
+
+#controls .offer {
   margin: 0;
-  font-size: 17px;
 }
 
-#status p {
-  margin: 3px 0 0;
-  color: var(--ink-dim);
+#controls .hint {
+  margin: 0;
+  padding: 2px 8px;
+}
+
+#controls .row {
+  flex-wrap: nowrap;
+}
+
+#controls .row button {
+  white-space: nowrap;
+}
+
+#controls .row button.primary {
+  padding: 8px 22px;
+  font-size: 15px;
+}
+
+#selection {
+  max-width: 360px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--glass-strong);
+}
+
+/* The long how-to lines live in the menu's help, not in the way. */
+#selection > .hint:last-child {
+  display: none;
 }
 
 .pips {
-  display: flex;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 8px;
   gap: 4px;
-  margin-top: 6px;
 }
 
 .pip {
@@ -361,11 +459,7 @@ a {
   min-height: 0;
 }
 
-.log-box.collapsed {
-  flex: none;
-}
-
-.log-box.collapsed #log {
+#log {
   display: none;
 }
 
@@ -442,8 +536,8 @@ button.link::before {
 
 .toast {
   position: fixed;
-  bottom: 24px;
-  left: calc((100% - var(--panel-width)) / 2);
+  bottom: calc(var(--dock-height) + 16px);
+  left: 50%;
   z-index: 30;
   max-width: min(520px, 80vw);
   padding: 8px 14px;
@@ -579,59 +673,20 @@ button.link::before {
   border-radius: 8px;
 }
 
-/* --- Small screens: the panel becomes a bottom sheet ------------------------ */
+/* --- Small screens: the drawer slides over the board ------------------------ */
 
 @media (max-width: 760px) {
-  :root {
-    --panel-width: 0px;
-  }
-
   body {
     font-size: 13.5px;
   }
 
-  .topbar {
-    top: max(8px, env(safe-area-inset-top));
-    left: 8px;
-    right: 8px;
-  }
-
-  .brand {
-    display: none;
-  }
-
-  .topbar button {
-    padding: 5px 9px;
-  }
-
   .panel {
-    top: auto;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    left: 10px;
     width: auto;
-    height: 44vh;
-    padding: 10px 12px max(10px, env(safe-area-inset-bottom));
-    gap: 8px;
-    border-radius: 14px 14px 0 0;
-    overflow-y: auto;
-  }
-
-  #die {
-    width: 52px;
-    height: 52px;
-  }
-
-  .log-box {
-    flex: none;
-  }
-
-  #log {
-    max-height: 120px;
   }
 
   .toast {
-    bottom: calc(44vh + 12px);
+    bottom: calc(var(--dock-height) + 12px);
     left: 50%;
   }
 
