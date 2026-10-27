@@ -102,17 +102,21 @@ export interface Targets {
   moves: ReadonlySet<string>;
   /** Castles the stack can attack, from where it stands or after walking to an entrance. */
   castles: ReadonlySet<string>;
-  /** Enemy markers this stack can take part in attacking. */
+  /**
+   * Enemy markers this stack can take part in attacking: next to it, or
+   * after walking next to one it can beat on its own.
+   */
   fields: ReadonlySet<string>;
-  /** The actions that take the stack to each of `moves` and `castles`, shortest first. */
+  /** The actions that take the stack to each target it can reach on its own, shortest first. */
   paths: ReadonlyMap<string, Action[]>;
 }
 
 /**
  * Every node `count` knights on `from` can reach with the movement points left,
- * and every castle they can attack on the way, with the actions to get there.
- * Each step is checked against the engine on the state the previous steps
- * lead to, so paths through own castles or start areas follow the rules.
+ * and every castle and enemy marker they can attack on the way (on their own),
+ * with the actions to get there. Each step is checked against the engine on
+ * the state the previous steps lead to, so paths through own castles or start
+ * areas follow the rules.
  */
 export function pathsFrom(state: GameState, from: string, count: number): Map<string, Action[]> {
   const ctx = boardContext(state.config);
@@ -125,9 +129,13 @@ export function pathsFrom(state: GameState, from: string, count: number): Map<st
   for (let item = queue.shift(); item; item = queue.shift()) {
     const { node, path } = item;
     for (const to of ctx.neighbours(node)) {
-      const attack: Action = { type: 'attackCastle', player, castle: to, from: node, count };
-      if (!out.has(to) && validateAction(item.state, attack) === null)
-        out.set(to, [...path, attack]);
+      const attacks: Action[] = [
+        { type: 'attackCastle', player, castle: to, from: node, count },
+        { type: 'attackField', player, target: to, contributions: [{ from: node, count }] },
+      ];
+      for (const attack of attacks)
+        if (!out.has(to) && validateAction(item.state, attack) === null)
+          out.set(to, [...path, attack]);
       const move: Action = { type: 'move', player, from: node, to, count };
       if (seen.has(to) || validateAction(item.state, move) !== null) continue;
       seen.add(to);
@@ -148,7 +156,10 @@ export function targetsFor(options: Options, from: string, count?: number): Targ
     : new Map<string, Action[]>();
   const moves = new Set<string>();
   const castles = new Set<string>();
-  for (const [node, path] of paths) (path.at(-1)!.type === 'move' ? moves : castles).add(node);
+  for (const [node, path] of paths) {
+    const type = path.at(-1)!.type;
+    (type === 'move' ? moves : type === 'attackCastle' ? castles : fields).add(node);
+  }
   return { moves, castles, fields, paths };
 }
 
@@ -184,8 +195,9 @@ export interface ClickResult {
  *
  * With a stack selected, a click on a node in reach walks the stack there
  * (several moves if needed) and keeps it selected; a click on a castle in
- * reach walks to its entrance and attacks it; a click on an enemy marker
- * starts a field attack with that stack in it. While
+ * reach walks to its entrance and attacks it; a click on a neighbouring enemy
+ * marker starts a field attack with that stack in it, and on one further away
+ * walks next to it and attacks. While
  * building an attack, clicking a possible source toggles it in or out (with all
  * it can send) and clicking the target confirms when `valid`. Anything else
  * starts over with the clicked node.
@@ -204,6 +216,8 @@ export function click(
     case 'stack': {
       const { from, count } = selection;
       if (node === from) return { selection: NONE };
+      if (options.fields.get(node)?.has(from))
+        return { selection: startAttack(options, node, from, count) };
       const targets = targetsFor(options, from, count);
       const path = targets.paths.get(node);
       if (path)
@@ -211,7 +225,6 @@ export function click(
           selection: targets.moves.has(node) ? { kind: 'stack', from: node, count } : NONE,
           actions: path,
         };
-      if (targets.fields.has(node)) return { selection: startAttack(options, node, from, count) };
       return { selection: pick(options, node) };
     }
 
@@ -235,12 +248,12 @@ export function click(
 
 /**
  * The selection carried over to new options after an action: a stack stays
- * selected while it can still act, with its count clamped; anything else is
- * dropped.
+ * selected while it can still act, with all its knights again (it may have
+ * joined others); anything else is dropped.
  */
 export function carryOver(selection: Selection, options: Options): Selection {
-  if (selection.kind !== 'stack' || !options.movable.has(selection.from)) return NONE;
-  return setCount(selection, options, selection.count);
+  if (selection.kind !== 'stack') return NONE;
+  return selectStack(options, selection.from);
 }
 
 /** Changes how many knights the selected stack sends (at least 1). */

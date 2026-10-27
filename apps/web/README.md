@@ -23,9 +23,12 @@ board photo is never used or shipped by the 3D client.
   panel (−/+, _1_, _All_, or <kbd>↑</kbd>/<kbd>↓</kbd>). Every node the stack
   can walk to with the movement points left is ringed green, with the MP it
   takes when more than one; click it to walk there in one go (the stack stays
-  selected while it can still move). Castles it can attack, right away or
-  after walking to an entrance, are ringed orange (the count moves in on a
-  win); a red enemy marker starts a field attack. Paths are planned by
+  selected while it can still move, again with all its knights). Castles it
+  can attack, right away or after walking to an entrance, are ringed orange
+  (the count moves in on a win). Enemy markers it can attack are ringed red:
+  a neighbouring one starts a field attack, one further away that the stack
+  can beat on its own is walked to and attacked in one click (the ring shows
+  the MP it takes, the attack included). Paths are planned by
   `pathsFrom` in `selection.ts`, which checks every step with the engine; the
   debug client shares it.
 - **Field attacks** from several directions: once an attack is started, every
@@ -91,9 +94,11 @@ board photo is never used or shipped by the 3D client.
   start area side by side. Count badges and castle labels never get smaller
   than about 20 px on screen (`minPixels`), so every stack can be found from
   the whole-board view.
-- **Shields** stand beside their castle in the owner's colour: "?" while face
-  down, "(n)" for your own face-down shield, a white face with the value once
-  revealed.
+- **Shields** stand to the right of their castle on screen, in the owner's
+  colour: "?" while face down, "(n)" for your own face-down shield, a
+  parchment face with the value once revealed. They always face the camera,
+  are drawn over the castle and its name, and are kept at least 40 px tall
+  (`minPixels`, which also scales models), so they read at any zoom.
 
 ### Animations
 

@@ -329,16 +329,48 @@ export function swords(value: number): THREE.Group {
 
 // --- Shields -------------------------------------------------------------------
 
+const SHIELD_SCALE = 0.34;
+const shieldFlat = new THREE.ShapeGeometry(shieldShape, 6);
+/** A white rim around the shield, like the outline of the count badges. */
+const shieldRim = new THREE.ShapeGeometry(shieldShape, 6)
+  .scale(1.14, 1.12, 1)
+  .translate(0, -0.01, 0);
+/** Height of `shieldShape`, tip to top edge. */
+const SHIELD_HEIGHT = 1.1;
+
 /**
- * A defender shield standing upright, facing +z: the owner's colour on the
- * back side, a white face with its value when shown. `value` is `null` when the
- * viewer may not see it; a face-down shield the viewer owns shows "(value)".
+ * A flat defender shield standing on its point, facing +z: the owner's colour
+ * while face down, parchment with its value when revealed. `value` is `null`
+ * when the viewer may not see it; a face-down shield the viewer owns shows
+ * "(value)". Kept at least 40 px tall on screen, growing upwards, and drawn on
+ * top; the scene turns it to face the camera (see `faceShields`).
  */
 export function shieldToken(owner: number, value: number | null, revealed: boolean): THREE.Group {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(shieldBody, revealed ? MATERIALS.parchment : playerMaterial(owner));
-  body.castShadow = true;
-  g.add(body);
+  const inner = new THREE.Group();
+  // The shape's point is at y = −0.6: lift it so the group stands on it.
+  inner.position.y = 0.6;
+  g.add(inner);
+  // Drawn over the castle and its name, under the count badges.
+  const layer = (
+    geometry: THREE.BufferGeometry,
+    color: THREE.ColorRepresentation,
+    order: number,
+  ) => {
+    const mesh = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      }),
+    );
+    mesh.renderOrder = order;
+    inner.add(mesh);
+  };
+  layer(shieldRim, '#ffffff', 9.1);
+  layer(shieldFlat, revealed ? '#efe2c0' : playerColour(owner), 9.2);
   const text = revealed ? String(value ?? '?') : value === null ? '?' : `(${value})`;
   const face = new THREE.Mesh(
     new THREE.PlaneGeometry(0.9, 0.9),
@@ -349,12 +381,15 @@ export function shieldToken(owner: number, value: number | null, revealed: boole
         weight: revealed ? 800 : 700,
       }),
       transparent: true,
+      depthTest: false,
       depthWrite: false,
     }),
   );
-  face.position.set(0, -0.02, 0.065);
-  g.add(face);
-  g.scale.setScalar(0.22);
+  face.renderOrder = 9.3;
+  face.position.set(0, -0.02, 0);
+  inner.add(face);
+  g.scale.setScalar(SHIELD_SCALE);
+  minPixels(g, 40, SHIELD_HEIGHT * SHIELD_SCALE);
   return g;
 }
 
@@ -416,12 +451,14 @@ export function countBadge(count: number, player: number): THREE.Sprite {
 }
 
 /**
- * Keeps a sprite at least `px` CSS pixels tall on screen however far the
- * camera is (see `BoardScene.render`); its world scale is the size close up.
+ * Keeps a sprite or model at least `px` CSS pixels tall on screen however far
+ * the camera is (see `BoardScene.render`); its world scale is the size close
+ * up. `height` is its world height at that scale (a sprite's is its y scale).
  */
-export function minPixels(sprite: THREE.Sprite, px: number) {
-  sprite.userData.minPx = px;
-  sprite.userData.size = { x: sprite.scale.x, y: sprite.scale.y };
+export function minPixels(object: THREE.Object3D, px: number, height = object.scale.y) {
+  object.userData.minPx = px;
+  object.userData.size = object.scale.clone();
+  object.userData.height = height;
 }
 
 const labelTextures = new Map<string, { texture: THREE.CanvasTexture; aspect: number }>();

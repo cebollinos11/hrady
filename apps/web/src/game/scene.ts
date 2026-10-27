@@ -356,17 +356,17 @@ export class BoardScene {
       this.shields.delete(id);
       if (!shield || view.owner === null) continue;
       const group = shieldToken(view.owner, shield.value, shield.revealed);
-      group.position.copy(this.shieldPoint(id));
-      group.rotation.y = this.node(id).facing;
+      group.userData.anchor = this.shieldPoint(id);
+      group.position.copy(group.userData.anchor as THREE.Vector3);
       this.shields.set(id, { key, group });
       this.scene.add(group);
     }
   }
 
+  /** Where a castle's shield stands; `faceShields` moves it to the castle's right on screen. */
   private shieldPoint(id: string): THREE.Vector3 {
     const n = this.node(id);
-    const off = rotate({ x: 0.27, z: 0.27 }, n.facing);
-    return new THREE.Vector3(n.pos.x + off.x, 0.2, n.pos.z + off.z);
+    return new THREE.Vector3(n.pos.x, 0.07, n.pos.z);
   }
 
   // --- Highlights -------------------------------------------------------------
@@ -609,10 +609,9 @@ export class BoardScene {
   async dropShield(castleId: string, player: PlayerId, duration: number) {
     const g = shieldToken(player, null, false);
     const at = this.shieldPoint(castleId);
-    g.rotation.y = this.node(castleId).facing;
     this.effects.add(g);
     await this.tween(duration, (t) => {
-      g.position.set(at.x, at.y + (1 - t * t) * 1.5, at.z);
+      g.userData.anchor = at.clone().setY(at.y + (1 - t * t) * 1.5);
     });
     this.effects.remove(g);
   }
@@ -643,11 +642,31 @@ export class BoardScene {
     for (const m of [...this.highlights.children, ...this.pings.children] as THREE.Mesh[])
       if (m.userData.pulse) (m.material as THREE.MeshBasicMaterial).opacity = pulse;
     this.rig.update(now);
+    this.faceShields();
     this.sizeSprites();
     this.renderer.render(this.scene, this.rig.camera);
   }
 
-  /** Scales up sprites marked with `minPixels` that would be smaller than that on screen. */
+  /**
+   * Turns shields to face the screen, so their value reads from any angle, and
+   * stands each one to the right of its castle, clear of the count badge.
+   */
+  private faceShields() {
+    const camera = this.rig.camera;
+    camera.updateMatrixWorld();
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).setY(0);
+    right.normalize();
+    const shields = [...[...this.shields.values()].map((s) => s.group), ...this.effects.children];
+    for (const g of shields) {
+      const anchor = g.userData.anchor as THREE.Vector3 | undefined;
+      if (!anchor) continue;
+      g.quaternion.copy(camera.quaternion);
+      // The shield is about as wide as its scale: keep the gap in proportion as it grows.
+      g.position.copy(anchor).addScaledVector(right, 0.9 * g.scale.x);
+    }
+  }
+
+  /** Scales up sprites and models marked with `minPixels` that would be smaller than that on screen. */
   private sizeSprites() {
     const camera = this.rig.camera;
     const { clientWidth: w, clientHeight: h } = this.canvas;
@@ -655,15 +674,20 @@ export class BoardScene {
     const small = Math.min(1, Math.max(0.7, Math.min(w, h) / 700));
     const perPixel = (small * 2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, h);
     const at = new THREE.Vector3();
-    const groups = [this.labels, this.highlights, ...[...this.stacks.values()].map((s) => s.group)];
+    const groups = [
+      this.labels,
+      this.highlights,
+      this.effects,
+      ...[...this.stacks.values()].map((s) => s.group),
+      ...[...this.shields.values()].map((s) => s.group),
+    ];
     for (const group of groups)
       group.traverse((o) => {
         const px = o.userData.minPx as number | undefined;
-        if (!px || !(o instanceof THREE.Sprite)) return;
-        const size = o.userData.size as { x: number; y: number };
+        if (!px) return;
+        const size = o.userData.size as THREE.Vector3;
         const min = px * perPixel * o.getWorldPosition(at).distanceTo(camera.position);
-        const k = Math.max(1, min / size.y);
-        o.scale.set(size.x * k, size.y * k, 1);
+        o.scale.copy(size).multiplyScalar(Math.max(1, min / (o.userData.height as number)));
       });
   }
 }

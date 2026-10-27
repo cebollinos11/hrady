@@ -34,7 +34,9 @@ describe('options', () => {
     // Up to 3 steps away; c holds an enemy and start areas cannot be re-entered.
     expect([...targets.moves].sort()).toEqual(['b', 'e', 'f', 'g']);
     expect(targets.paths.get('g')).toHaveLength(3);
-    expect(targets.fields.size).toBe(0);
+    // c can be attacked after walking to b.
+    expect([...targets.fields]).toEqual(['c']);
+    expect(targets.paths.get('c')).toHaveLength(2);
     expect(targetsFor(options, 'b').moves.size).toBe(0);
   });
 
@@ -114,6 +116,23 @@ describe('click', () => {
     expect(pathsFrom({ ...walk, mp: 2 }, 'e', 2).has('keep')).toBe(false);
   });
 
+  it('walks next to an enemy marker and attacks it', () => {
+    const walk = scenario({ knights: { e: { 0: 3 }, g: { 1: 2 } } });
+    const path = [
+      { type: 'move', player: 0, from: 'e', to: 'f', count: 3 },
+      { type: 'attackField', player: 0, target: 'g', contributions: [{ from: 'f', count: 3 }] },
+    ];
+    expect(pathsFrom(walk, 'e', 3).get('g')).toEqual(path);
+    const options = optionsFor(walk);
+    expect(targetsFor(options, 'e').fields.has('g')).toBe(true);
+    expect(click(click(NONE, options, 'e').selection, options, 'g')).toEqual({
+      selection: NONE,
+      actions: path,
+    });
+    // Two knights do not outnumber two defenders.
+    expect(pathsFrom(walk, 'e', 2).has('g')).toBe(false);
+  });
+
   it('carries a stack selection over while it can still act', () => {
     const options = optionsFor(state);
     expect(carryOver({ kind: 'stack', from: 'a', count: 9 }, options)).toEqual({
@@ -121,6 +140,8 @@ describe('click', () => {
       from: 'a',
       count: 3,
     });
+    // After a walk the whole stack is selected again.
+    expect(carryOver({ kind: 'stack', from: 'a', count: 1 }, options)).toMatchObject({ count: 3 });
     expect(carryOver({ kind: 'stack', from: 'c', count: 1 }, options)).toEqual(NONE);
     expect(
       carryOver({ kind: 'stack', from: 'a', count: 1 }, optionsFor({ ...state, mp: 0 })),

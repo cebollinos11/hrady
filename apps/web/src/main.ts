@@ -383,7 +383,7 @@ function renderSelection() {
       h(
         'p',
         { className: 'hint' },
-        'Click a green node to walk there (a number on the ring is the MP it takes), an orange castle to walk to it and attack (the count moves in on a win), or a red marker to attack it.',
+        'Click a green node to walk there (a number on the ring is the MP it takes), an orange castle to walk to it and attack (the count moves in on a win), or a red marker to attack it (walking next to it first if needed).',
       ),
     );
     return;
