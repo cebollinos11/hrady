@@ -17,6 +17,8 @@ beforeAll(async () => {
     config: resolve(root, 'wrangler.toml'),
     local: true,
     persist: false,
+    // wrangler.toml lists the deployed origins; the test calls from anywhere.
+    vars: { ALLOWED_ORIGINS: '*' },
     logLevel: 'error',
     experimental: { disableExperimentalWarning: true },
   });
