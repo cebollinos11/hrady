@@ -37,10 +37,20 @@ importers:
         version: 5.0.5(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15))
 
   apps/server:
+    dependencies:
+      '@hrady/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      '@hrady/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20261026.1
         version: 5.20261026.1
+      '@hrady/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       wrangler:
         specifier: ^4.152.0
         version: 4.152.0(@cloudflare/workers-types@5.20261026.1)(@types/node@22.20.5)
@@ -87,6 +97,12 @@ importers:
       '@hrady/board':
         specifier: workspace:*
         version: link:../board
+
+  packages/protocol:
+    dependencies:
+      '@hrady/engine':
+        specifier: workspace:*
+        version: link:../engine
 
   tools/map-editor:
     dependencies:
