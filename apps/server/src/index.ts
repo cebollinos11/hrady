@@ -6,9 +6,12 @@ import {
   makeCode,
   parseClientMessage,
   parseCreateRoom,
+  parseStatusRequest,
   type CreateRoomResponse,
   type LogEntry,
   type RoomInfo,
+  type RoomMode,
+  type RoomStatus,
   type ServerMessage,
 } from '@hrady/protocol';
 import {
@@ -18,6 +21,7 @@ import {
   receive,
   reconcile,
   roomInfo,
+  statusFor,
   tick,
   type Context,
   type Result,
@@ -65,12 +69,20 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   /** Called by the Worker for `POST /api/rooms`; `null` if the code is taken. */
-  async create(code: string, name: string, players: number): Promise<{ token: string } | null> {
+  async create(
+    code: string,
+    name: string,
+    players: number,
+    mode: RoomMode = 'live',
+  ): Promise<{ token: string } | null> {
     if (this.room) return null;
-    const { room, token } = createRoom(code, name, players, {
-      now: Date.now(),
-      random: cryptoRandom,
-    });
+    const { room, token } = createRoom(
+      code,
+      name,
+      players,
+      { now: Date.now(), random: cryptoRandom },
+      mode,
+    );
     await this.commit({ room, out: [] });
     return { token };
   }
@@ -78,6 +90,11 @@ export class GameRoom extends DurableObject<Env> {
   /** Called by the Worker for `GET /api/rooms/:code`. */
   async info(): Promise<RoomInfo | null> {
     return this.room && roomInfo(this.room, Date.now());
+  }
+
+  /** Called by the Worker for `POST /api/rooms/:code/status`. */
+  async status(token: string): Promise<RoomStatus | null> {
+    return this.room && statusFor(this.room, token, Date.now());
   }
 
   override async fetch(request: Request): Promise<Response> {
@@ -277,6 +294,7 @@ export default {
             code,
             body.name,
             body.players ?? 3,
+            body.mode,
           );
           if (created)
             return json({ code, token: created.token } satisfies CreateRoomResponse, 201, cors);
@@ -286,6 +304,18 @@ export default {
       case 'info': {
         const info = await env.ROOMS.getByName(r.code).info();
         return info ? json(info, 200, cors) : json({ error: 'no such room' }, 404, cors);
+      }
+      case 'status': {
+        let token;
+        try {
+          const text = await request.text();
+          if (text.length > 256) throw new ProtocolError('request too large');
+          token = parseStatusRequest(JSON.parse(text)).token;
+        } catch (e) {
+          return json({ error: e instanceof ProtocolError ? e.message : 'bad request' }, 400, cors);
+        }
+        const status = await env.ROOMS.getByName(r.code).status(token);
+        return status ? json(status, 200, cors) : json({ error: 'no such room' }, 404, cors);
       }
       case 'socket':
         if (request.headers.get('Upgrade') !== 'websocket')

@@ -7,6 +7,7 @@ describe('route', () => {
     expect(route('OPTIONS', '/api/rooms')).toEqual({ kind: 'preflight' });
     expect(route('POST', '/api/rooms')).toEqual({ kind: 'create' });
     expect(route('GET', '/api/rooms/abcde')).toEqual({ kind: 'info', code: 'ABCDE' });
+    expect(route('POST', '/api/rooms/abcde/status')).toEqual({ kind: 'status', code: 'ABCDE' });
     expect(route('GET', '/ws/Room42/')).toEqual({ kind: 'socket', code: 'ROOM42' });
   });
 
@@ -14,6 +15,7 @@ describe('route', () => {
     for (const [method, path] of [
       ['GET', '/api/rooms'],
       ['POST', '/api/rooms/ABCDE'],
+      ['GET', '/api/rooms/ABCDE/status'],
       ['GET', '/ws/'],
       ['GET', '/ws/abc'],
       ['GET', '/ws/abc-def'],

@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   CODE_ALPHABET,
   ProtocolError,
+  asyncSeatProblem,
   makeCode,
   normaliseCode,
   normaliseName,
   parseClientMessage,
   parseCreateRoom,
+  parseStatusRequest,
 } from '../src';
 
 const parse = (v: unknown) => parseClientMessage(JSON.stringify(v));
@@ -115,5 +117,33 @@ describe('names and codes', () => {
     expect(parseCreateRoom({ name: 'Ann' })).toEqual({ name: 'Ann' });
     expect(() => parseCreateRoom({ name: 'Ann', players: 6 })).toThrow(ProtocolError);
     expect(() => parseCreateRoom({})).toThrow(ProtocolError);
+    expect(parseCreateRoom({ name: 'Ann', mode: 'async' })).toEqual({ name: 'Ann', mode: 'async' });
+    expect(() => parseCreateRoom({ name: 'Ann', mode: 'turbo' })).toThrow(ProtocolError);
+  });
+
+  it('parses status requests', () => {
+    expect(parseStatusRequest({ token: 'abcdefgh12' })).toEqual({ token: 'abcdefgh12' });
+    expect(() => parseStatusRequest({ token: 'short' })).toThrow(ProtocolError);
+    expect(() => parseStatusRequest({})).toThrow(ProtocolError);
+  });
+});
+
+describe('asyncSeatProblem', () => {
+  const human = (member: string) => ({ type: 'human' as const, member });
+  const bot = { type: 'bot' as const };
+
+  it('accepts bots that sit right before the host, wrapping around', () => {
+    expect(asyncSeatProblem([human('h'), human('g'), bot, bot], 'h')).toBeNull();
+    expect(asyncSeatProblem([bot, human('h'), human('g'), bot], 'h')).toBeNull();
+    expect(asyncSeatProblem([human('g'), bot, bot, human('h')], 'h')).toBeNull();
+    expect(asyncSeatProblem([human('h'), bot, bot], 'h')).toBeNull();
+    expect(asyncSeatProblem([human('h'), human('g'), human('i')], 'h')).toBeNull();
+  });
+
+  it('refuses a bot before another human and a host without a seat', () => {
+    expect(asyncSeatProblem([human('h'), bot, human('g')], 'h')).toMatch(/right before the host/);
+    expect(asyncSeatProblem([human('g'), human('h'), bot, bot], 'h')).toMatch(/right before/);
+    expect(asyncSeatProblem([human('g'), bot, human('i')], null)).toMatch(/host must take a seat/);
+    expect(asyncSeatProblem([bot, bot, human('g')], 'h')).toMatch(/host must take a seat/);
   });
 });

@@ -15,6 +15,13 @@ export const BOT_LEVELS: readonly BotLevel[] = ['easy', 'medium', 'hard'];
 export const TURN_SECONDS: readonly number[] = [0, 60, 120, 300];
 export const DEFAULT_TURN_SECONDS = 120;
 
+/**
+ * `live`: everyone is online at once, bots play for people who go idle.
+ * `async`: turns can be hours apart, nobody takes over, bots wait for the host.
+ */
+export type RoomMode = 'live' | 'async';
+export const ROOM_MODES: readonly RoomMode[] = ['live', 'async'];
+
 export const MAX_NAME_LENGTH = 20;
 /** Longest client message the server reads, in characters. */
 export const MAX_MESSAGE_LENGTH = 4096;
@@ -72,6 +79,7 @@ export type RoomPhase = 'lobby' | 'playing' | 'over';
 /** The public state of a room: lobby, seats and who runs the bots. */
 export interface RoomInfo {
   code: string;
+  mode: RoomMode;
   phase: RoomPhase;
   players: number;
   turnSeconds: number;
@@ -79,6 +87,8 @@ export interface RoomInfo {
   host: string | null;
   seats: SeatInfo[];
   members: MemberInfo[];
+  /** The seat to move while the game runs, else `null`. */
+  turn: PlayerId | null;
   /** Milliseconds until a bot takes over the player to move, if a timer runs. */
   deadlineIn: number | null;
 }
@@ -137,10 +147,22 @@ export type ServerMessage =
 export interface CreateRoomRequest {
   name: string;
   players?: number;
+  mode?: RoomMode;
 }
 
 /** Answer to `POST /api/rooms`: keep the token to reconnect to the seat. */
 export interface CreateRoomResponse {
   code: string;
   token: string;
+}
+
+/** Body of `POST /api/rooms/:code/status`. */
+export interface StatusRequest {
+  token: string;
+}
+
+/** Answer to `POST /api/rooms/:code/status`: the room, and which member the token is (`null` if unknown). */
+export interface RoomStatus {
+  room: RoomInfo;
+  me: string | null;
 }

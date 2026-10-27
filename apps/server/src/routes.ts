@@ -6,11 +6,13 @@ export type Route =
   | { kind: 'preflight' }
   | { kind: 'create' }
   | { kind: 'info'; code: string }
+  | { kind: 'status'; code: string }
   | { kind: 'socket'; code: string }
   | { kind: 'notFound' };
 
 /**
- * `POST /api/rooms` creates a room, `GET /api/rooms/:code` describes it and
+ * `POST /api/rooms` creates a room, `GET /api/rooms/:code` describes it,
+ * `POST /api/rooms/:code/status` describes it for the holder of a token and
  * `/ws/:code` opens its WebSocket. Codes are case-insensitive.
  */
 export function route(method: string, pathname: string): Route {
@@ -21,6 +23,11 @@ export function route(method: string, pathname: string): Route {
   if (api && method === 'GET') {
     const code = normaliseCode(api[1]!);
     if (code) return { kind: 'info', code };
+  }
+  const status = /^\/api\/rooms\/([^/]+)\/status\/?$/.exec(pathname);
+  if (status && method === 'POST') {
+    const code = normaliseCode(status[1]!);
+    if (code) return { kind: 'status', code };
   }
   const ws = /^\/ws\/([^/]+)\/?$/.exec(pathname);
   if (ws && method === 'GET') {

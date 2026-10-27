@@ -1,6 +1,6 @@
 import { legalActions, replay, viewFor, type Action } from '@hrady/engine';
 import { describe, expect, it } from 'vitest';
-import { TIMING, publicSeatView, type Room } from '../src/room';
+import { TIMING, publicSeatView, statusFor, type Room } from '../src/room';
 import { Sim, type Client } from './sim';
 
 /** A lobby with the host and `others` joined, before the start. */
@@ -357,6 +357,166 @@ describe('expiry', () => {
     const { sim } = lobby();
     sim.advance(TIMING.idle + 1000);
     expect(sim.destroyed).toBe(true);
+  });
+});
+
+const HOUR = 60 * 60_000;
+const DAY = 24 * HOUR;
+
+/** An async lobby with the host in seat 0 and Bea in seat 1. */
+function asyncLobby(players = 3) {
+  const sim = new Sim(players, 'Host', 'async');
+  const host = sim.connect('Host', sim.hostToken);
+  const bea = sim.connect('Bea');
+  return { sim, host, bea };
+}
+
+/** An async game: Host, Bea, then bots in the remaining seats; started. */
+function asyncStarted(players = 3) {
+  const { sim, host, bea } = asyncLobby(players);
+  for (let s = 2; s < players; s++) sim.send(host, { type: 'setSeat', seat: s, kind: 'medium' });
+  sim.send(host, { type: 'start' });
+  return { sim, host, bea };
+}
+
+describe('async rooms', () => {
+  it('has no turn timer and says what it is', () => {
+    const { sim, host } = asyncLobby();
+    expect(host.room).toMatchObject({ mode: 'async', turnSeconds: 0, phase: 'lobby', turn: null });
+    sim.send(host, { type: 'setOptions', turnSeconds: 60 });
+    expect(sim.room.turnSeconds).toBe(0);
+    expect(new Sim(3).room.mode).toBe('live');
+  });
+
+  it('starts only when the bots sit right before the host', () => {
+    const { sim, host, bea } = asyncLobby();
+    // Host, a bot, then Bea: Bea would wait for the host to open the app.
+    sim.send(host, { type: 'setSeat', seat: 1, kind: 'easy' });
+    sim.send(bea, { type: 'sit', seat: 2 });
+    sim.send(host, { type: 'start' });
+    expect(lastError(host)).toMatchObject({
+      code: 'denied',
+      message: expect.stringMatching(/before the host/),
+    });
+    expect(sim.room.phase).toBe('lobby');
+
+    // Host, Bea, a bot: fine.
+    sim.send(host, { type: 'setSeat', seat: 1, kind: 'open' });
+    sim.send(bea, { type: 'sit', seat: 1 });
+    sim.send(host, { type: 'setSeat', seat: 2, kind: 'easy' });
+    sim.send(host, { type: 'start' });
+    expect(sim.room.phase).toBe('playing');
+    expect(host.room).toMatchObject({ phase: 'playing', turn: sim.room.game!.state.current });
+  });
+
+  it('needs the host to hold a seat, since the bots run in their browser', () => {
+    const { sim, host, bea } = asyncLobby();
+    sim.send(host, { type: 'setSeat', seat: 2, kind: 'easy' });
+    sim.send(host, { type: 'stand' });
+    sim.send(bea, { type: 'sit', seat: 0 });
+    sim.send(host, { type: 'setSeat', seat: 1, kind: 'easy' });
+    sim.send(host, { type: 'start' });
+    expect(lastError(host)).toMatchObject({
+      message: expect.stringMatching(/host must take a seat/),
+    });
+  });
+
+  it('plays a whole game across days while each browser is closed most of the time', () => {
+    const { sim, host: h0, bea: b0 } = asyncStarted(4);
+    // Seat 3 is a bot too: Host, Bea, bot, bot.
+    expect(sim.room.seats.map((s) => s.type)).toEqual(['human', 'human', 'bot', 'bot']);
+    let host = h0;
+    let bea = b0;
+    const reopen = (c: Client, name: string) => (c.open ? c : sim.connect(name, c.token!));
+    let turn = -1;
+    for (let i = 0; i < 100_000 && sim.room.phase === 'playing'; i++) {
+      const cur = sim.room.game!.state.current;
+      if (cur !== turn) {
+        turn = cur;
+        if (cur === 1) {
+          // Bea's turn: the host has closed the app, hours pass, Bea opens it.
+          if (host.open) sim.drop(host);
+          sim.advance(6 * HOUR);
+          bea = reopen(bea, 'Bea');
+        } else {
+          if (bea.open) sim.drop(bea);
+          sim.advance(3 * HOUR);
+          host = reopen(host, 'Host');
+        }
+        expect(sim.destroyed).toBe(false);
+        expect(sim.room.game!.away.some(Boolean)).toBe(false);
+      }
+      expect(sim.step([host, bea].filter((c) => c.open))).toBe(true);
+    }
+    expect(sim.room.phase).toBe('over');
+    // Longer than a live room would ever have lived; bots only played bot seats.
+    expect(sim.now - 1_000_000).toBeGreaterThan(2 * DAY);
+    expect(sim.log.filter((e) => e.auto).every((e) => e.action.player >= 2)).toBe(true);
+    expect(sim.log.filter((e) => e.action.player < 2).every((e) => !e.auto)).toBe(true);
+  }, 120_000);
+
+  it('waits for the host instead of moving bot duty to someone else', () => {
+    const { sim, host, bea } = asyncStarted(3);
+    // Play until it is Bea's turn, with the host's browser handling its duty.
+    for (let i = 0; i < 5000 && sim.room.game!.state.current !== 1; i++) sim.step([host, bea]);
+    expect(sim.room.game!.state.current).toBe(1);
+    sim.drop(host);
+    // Bea plays and ends her turn; the next seat is a bot.
+    for (let i = 0; i < 5000 && sim.room.game!.state.current === 1; i++) sim.step([bea]);
+    expect(sim.room.game!.state.current).toBe(2);
+    bea.duty = null;
+    sim.advance(3 * DAY);
+    expect(sim.room.host).toBe(host.member);
+    expect(sim.room.game!.duty).toBeNull();
+    expect(bea.duty).toBeNull();
+    // The host opens the game: the bot's turn is theirs to play.
+    const back = sim.connect('Host', host.token!);
+    expect(back.duty).toMatchObject({ seat: 2 });
+    expect(sim.room.host).toBe(back.member);
+  });
+
+  it('never takes over a human, however long they are away', () => {
+    const { sim, host, bea } = asyncStarted(3);
+    for (let i = 0; i < 5000 && sim.room.game!.state.current !== 1; i++) sim.step([host, bea]);
+    sim.drop(host);
+    sim.drop(bea);
+    sim.advance(10 * DAY);
+    expect(sim.destroyed).toBe(false);
+    expect(sim.room.game!.away.some(Boolean)).toBe(false);
+    expect(sim.room.game!.state.current).toBe(1);
+    expect(sim.log.filter((e) => e.auto && e.action.player === 1)).toEqual([]);
+    // Bea comes back after ten days and plays on.
+    const back = sim.connect('Bea', bea.token!);
+    expect(back.view!.current).toBe(1);
+    sim.step([back]);
+    expect(sim.log.at(-1)!.action.player).toBe(1);
+  });
+
+  it('expires after 14 days without a message, a lobby after 2, a finished game after 7', () => {
+    const lobbyOnly = asyncLobby();
+    lobbyOnly.sim.drop(lobbyOnly.host);
+    lobbyOnly.sim.drop(lobbyOnly.bea);
+    lobbyOnly.sim.advance(DAY);
+    expect(lobbyOnly.sim.destroyed).toBe(false);
+    lobbyOnly.sim.advance(DAY + HOUR);
+    expect(lobbyOnly.sim.destroyed).toBe(true);
+
+    const { sim, host, bea } = asyncStarted(3);
+    sim.drop(host);
+    sim.drop(bea);
+    sim.advance(13 * DAY);
+    expect(sim.destroyed).toBe(false);
+    sim.advance(2 * DAY);
+    expect(sim.destroyed).toBe(true);
+  });
+
+  it('tells the holder of a token which member they are', () => {
+    const { sim, host, bea } = asyncStarted(3);
+    const status = statusFor(sim.room, bea.token!, sim.now);
+    expect(status.me).toBe(bea.member);
+    expect(status.room).toMatchObject({ code: 'ROOM1', mode: 'async', phase: 'playing' });
+    expect(statusFor(sim.room, host.token!, sim.now).me).toBe(host.member);
+    expect(statusFor(sim.room, 'nobody-knows-this-token', sim.now).me).toBeNull();
   });
 });
 

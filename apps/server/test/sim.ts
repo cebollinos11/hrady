@@ -1,6 +1,13 @@
 import { createBot, createRandom, removedShields, type Bot } from '@hrady/ai';
 import type { GameView } from '@hrady/engine';
-import type { ClientMessage, Duty, LogEntry, RoomInfo, ServerMessage } from '@hrady/protocol';
+import type {
+  ClientMessage,
+  Duty,
+  LogEntry,
+  RoomInfo,
+  RoomMode,
+  ServerMessage,
+} from '@hrady/protocol';
 import { expect } from 'vitest';
 import {
   createRoom,
@@ -41,8 +48,8 @@ export class Sim {
   private random = createRandom(7);
   private bots = new Map<string, Bot>();
 
-  constructor(players = 3, hostName = 'Host') {
-    const { room, token } = createRoom('ROOM1', hostName, players, this.ctx());
+  constructor(players = 3, hostName = 'Host', mode: RoomMode = 'live') {
+    const { room, token } = createRoom('ROOM1', hostName, players, this.ctx(), mode);
     this.room = room;
     this.hostToken = token;
   }

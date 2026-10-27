@@ -12,13 +12,16 @@ import {
 } from '@hrady/engine';
 import {
   DEFAULT_TURN_SECONDS,
+  asyncSeatProblem,
   type BotLevel,
   type BotObservation,
   type ClientMessage,
   type GameSnapshot,
   type LogEntry,
   type RoomInfo,
+  type RoomMode,
   type RoomPhase,
+  type RoomStatus,
   type SeatInfo,
   type ServerMessage,
 } from '@hrady/protocol';
@@ -29,6 +32,8 @@ import {
  * messages to send and the changes to the stored log. `GameRoom` (index.ts)
  * only does the I/O around them.
  */
+
+const DAY = 24 * 60 * 60_000;
 
 /** Timings, in milliseconds. */
 export const TIMING = {
@@ -44,6 +49,12 @@ export const TIMING = {
   overKeep: 30 * 60_000,
   /** …and any room after this long without a single message. */
   idle: 6 * 60 * 60_000,
+  /** Async rooms wait for people for days: a game after this long without a message… */
+  asyncIdle: 14 * DAY,
+  /** …a lobby nobody is connected to after this long… */
+  asyncLobbyEmpty: 2 * DAY,
+  /** …and a finished game this long after its end. */
+  asyncOverKeep: 7 * DAY,
 };
 
 /** Bot level that plays for a human who is away. */
@@ -90,6 +101,8 @@ export interface Game {
 
 export interface Room {
   code: string;
+  /** Absent in rooms stored before async play existed: those are `live`. */
+  mode?: RoomMode;
   created: number;
   /** Time of the last message from anyone. */
   updated: number;
@@ -131,6 +144,8 @@ export interface Result {
   destroy?: boolean;
 }
 
+export const isAsync = (room: Room) => room.mode === 'async';
+
 function randomToken(random: () => number): string {
   let token = '';
   for (let i = 0; i < 24; i++) token += Math.floor(random() * 36).toString(36);
@@ -143,6 +158,7 @@ export function createRoom(
   name: string,
   players: number,
   ctx: Pick<Context, 'now' | 'random'>,
+  mode: RoomMode = 'live',
 ): { room: Room; token: string } {
   const token = randomToken(ctx.random);
   const host: Member = { id: 'm1', token, name, seat: 0, connected: false, lastSeen: ctx.now };
@@ -151,11 +167,12 @@ export function createRoom(
   );
   const room: Room = {
     code,
+    mode,
     created: ctx.now,
     updated: ctx.now,
     phase: 'lobby',
     players,
-    turnSeconds: DEFAULT_TURN_SECONDS,
+    turnSeconds: mode === 'async' ? 0 : DEFAULT_TURN_SECONDS,
     seats,
     members: [host],
     nextMember: 2,
@@ -167,9 +184,10 @@ export function createRoom(
 
 // --- Views -------------------------------------------------------------------
 
-/** When a bot takes over the player to move, or `null` if no timer runs. */
+/** When a bot takes over the player to move, or `null` if no timer runs (never in async rooms). */
 export function deadline(room: Room): number | null {
   const g = room.game;
+  if (isAsync(room)) return null;
   if (room.phase !== 'playing' || !g || g.state.phase === 'over') return null;
   const seat = room.seats[g.state.current];
   if (seat?.type !== 'human' || g.away[g.state.current]) return null;
@@ -195,14 +213,22 @@ export function roomInfo(room: Room, now: number): RoomInfo {
   const due = deadline(room);
   return {
     code: room.code,
+    mode: room.mode ?? 'live',
     phase: room.phase,
     players: room.players,
     turnSeconds: room.turnSeconds,
     host: room.host,
     seats,
     members: room.members.map(({ id, name, seat, connected }) => ({ id, name, seat, connected })),
+    turn: room.phase === 'playing' && room.game ? room.game.state.current : null,
     deadlineIn: due === null ? null : Math.max(0, due - now),
   };
+}
+
+/** The room as seen by whoever holds `token` (`me` is `null` for an unknown token). */
+export function statusFor(room: Room, token: string, now: number): RoomStatus {
+  const m = room.members.find((x) => x.token === token);
+  return { room: roomInfo(room, now), me: m?.id ?? null };
 }
 
 /** Compares rooms by what members see (the deadline as a time, not a countdown). */
@@ -267,6 +293,8 @@ function eligibleHosts(room: Room): Member[] {
 /** Keeps the host if they are still eligible, otherwise hands over to the first eligible member. */
 function syncHost(room: Room) {
   const host = member(room, room.host);
+  // The bots of an async game run in the creator's browser and wait for it, however long it takes.
+  if (host && isAsync(room)) return;
   const eligible = eligibleHosts(room);
   if (host && eligible.includes(host)) return;
   if (eligible[0]) room.host = eligible[0].id;
@@ -318,19 +346,26 @@ function syncDuty(room: Room, out: Outgoing[], now: number) {
 
 /** When the room expires. */
 export function expiry(room: Room): number {
-  let t = room.updated + TIMING.idle;
+  const async = isAsync(room);
+  let t = room.updated + (async ? TIMING.asyncIdle : TIMING.idle);
   if (!room.members.some((m) => m.connected)) {
     const left = Math.max(room.updated, ...room.members.map((m) => m.lastSeen));
     const ttl =
       room.phase === 'lobby'
-        ? TIMING.lobbyEmpty
+        ? async
+          ? TIMING.asyncLobbyEmpty
+          : TIMING.lobbyEmpty
         : room.phase === 'playing'
-          ? TIMING.gameEmpty
-          : TIMING.overEmpty;
+          ? async
+            ? Infinity
+            : TIMING.gameEmpty
+          : async
+            ? TIMING.asyncOverKeep
+            : TIMING.overEmpty;
     t = Math.min(t, left + ttl);
   }
   if (room.phase === 'over' && room.game?.ended != null)
-    t = Math.min(t, room.game.ended + TIMING.overKeep);
+    t = Math.min(t, room.game.ended + (async ? TIMING.asyncOverKeep : TIMING.overKeep));
   return t;
 }
 
@@ -339,7 +374,8 @@ export function nextAlarm(room: Room): number {
   const times = [expiry(room)];
   const due = deadline(room);
   if (due !== null) times.push(due);
-  if (room.game?.duty) times.push(room.game.duty.since + TIMING.botTimeout);
+  // An async host may be away for days: its duty waits instead of moving on.
+  if (room.game?.duty && !isAsync(room)) times.push(room.game.duty.since + TIMING.botTimeout);
   return Math.min(...times);
 }
 
@@ -412,7 +448,7 @@ export function receive(
 
     case 'setOptions':
       if (!lobby || !isHost) return deny('only the host can change the options');
-      if (msg.turnSeconds !== undefined) room.turnSeconds = msg.turnSeconds;
+      if (msg.turnSeconds !== undefined && !isAsync(room)) room.turnSeconds = msg.turnSeconds;
       if (msg.players !== undefined) {
         for (const other of room.members)
           if (other.seat !== null && other.seat >= msg.players) unseat(room, other);
@@ -517,6 +553,8 @@ function start(before: string, room: Room, m: Member, ctx: Context): Result {
     return { room, out: [error('fill or remove the open seats first', 'denied')] };
   if (!room.seats.some((s) => s.type === 'human'))
     return { room, out: [error('at least one person must play', 'denied')] };
+  const order = isAsync(room) ? asyncSeatProblem(room.seats, room.host) : null;
+  if (order) return { room, out: [error(order, 'denied')] };
   const players = room.players;
   const config: GameConfig = { players, firstPlayer: Math.floor(ctx.random() * players) };
   const seed = Math.floor(ctx.random() * 2 ** 32) >>> 0;
@@ -672,7 +710,7 @@ export function tick(current: Room, ctx: Pick<Context, 'now'>): Result {
   const g = room.game;
   const due = deadline(room);
   if (g && due !== null && now >= due) g.away[g.state.current] = true;
-  if (g?.duty && now >= g.duty.since + TIMING.botTimeout) {
+  if (g?.duty && !isAsync(room) && now >= g.duty.since + TIMING.botTimeout) {
     // The AI host did not answer: try the next eligible human, or ask again.
     const eligible = eligibleHosts(room);
     const i = eligible.findIndex((x) => x.id === room.host);

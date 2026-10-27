@@ -3,10 +3,13 @@ import {
   BOT_LEVELS,
   MAX_MESSAGE_LENGTH,
   MAX_NAME_LENGTH,
+  ROOM_MODES,
   TURN_SECONDS,
   type BotLevel,
   type ClientMessage,
   type CreateRoomRequest,
+  type RoomMode,
+  type StatusRequest,
 } from './messages';
 
 /** Letters and digits that cannot be mistaken for each other (no 0/O, 1/I/L). */
@@ -162,6 +165,19 @@ export function parseCreateRoom(raw: unknown): CreateRoomRequest {
   if (!isObj(raw)) throw new ProtocolError('expected { name, players }');
   const name = normaliseName(raw.name);
   if (!name) throw new ProtocolError('a name is required');
-  if (raw.players === undefined) return { name };
-  return { name, players: int(raw, 'players', MIN_PLAYERS, MAX_PLAYERS) };
+  const out: CreateRoomRequest = { name };
+  if (raw.players !== undefined) out.players = int(raw, 'players', MIN_PLAYERS, MAX_PLAYERS);
+  if (raw.mode !== undefined) {
+    if (!ROOM_MODES.includes(raw.mode as RoomMode))
+      throw new ProtocolError(`mode must be one of ${ROOM_MODES.join(', ')}`);
+    out.mode = raw.mode as RoomMode;
+  }
+  return out;
+}
+
+/** Parses the body of `POST /api/rooms/:code/status`. */
+export function parseStatusRequest(raw: unknown): StatusRequest {
+  if (!isObj(raw) || typeof raw.token !== 'string' || !/^[\w-]{8,64}$/.test(raw.token))
+    throw new ProtocolError('expected { token }');
+  return { token: raw.token };
 }

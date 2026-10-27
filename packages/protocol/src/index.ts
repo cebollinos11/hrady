@@ -6,6 +6,7 @@ export {
   MAX_NAME_LENGTH,
   PING,
   PONG,
+  ROOM_MODES,
   TURN_SECONDS,
 } from './messages';
 export {
@@ -18,4 +19,6 @@ export {
   parseAction,
   parseClientMessage,
   parseCreateRoom,
+  parseStatusRequest,
 } from './parse';
+export { asyncSeatProblem } from './order';
