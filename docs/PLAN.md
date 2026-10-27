@@ -177,7 +177,7 @@ Sounds, animations for battles/reveals, tutorial/rules overlay, i18n
 accessibility (colour-blind-safe player colours + patterns),
 end-game summary, save/resume local games, game replays.
 
-#### 7a — Spawn, battle and reveal animations (detailed)
+#### 7a — Spawn, battle and reveal animations (implemented)
 
 Scope: visuals only (no audio yet; the new steps expose named hooks such as
 `spawn`, `clash`, `reveal`, `capture` so sounds can attach later). Everything
@@ -243,6 +243,12 @@ without showing the value to anyone else (only face-down in the redacted view).
 4. Playwright check in `apps/web/scripts` that plays a scripted game with a
    blocked spawn, a field battle and a shielded castle attack and asserts the
    queue drains (no stuck animator) in normal, fast and hurry modes.
+**Note:** the main board is a 2D pixel-art canvas (`PixelScene`), not three.js,
+so the shield "3D flip" is a 2D flip: the shield sprite is squeezed to an edge
+and widened again showing its face. Effects live in `pixelScene.ts`, the
+sequencing in `animator.ts`, the planning in `steps.ts`
+(`apps/web/test/steps.test.ts`, `animator.test.ts`).
+
 **Done when:** each of the four situations above plays correctly in local and
 online games, `hurry()` never leaves a ghost or half-faded figure behind, and
 the animator tests pass.

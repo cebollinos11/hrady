@@ -1,8 +1,16 @@
-import { apply, initialState, type GameState } from '@hrady/engine';
+import { apply, initialState, legalActions, type GameState } from '@hrady/engine';
 import { describe, expect, it } from 'vitest';
 import { lcg, progressBot } from '../../../packages/engine/test/bot';
-import { scenario } from '../../../packages/engine/test/fixtures';
-import { countsAfter, departed, planSteps, stepDuration, type Knights } from '../src/game/steps';
+import { rigRoll, scenario } from '../../../packages/engine/test/fixtures';
+import {
+  countsAfter,
+  departed,
+  planSteps,
+  siegeNeed,
+  siegeTiming,
+  stepDuration,
+  type Knights,
+} from '../src/game/steps';
 
 /** Knights as `node:player` → count, without empty entries, for comparing. */
 function flat(knights: Knights): Record<string, number> {
@@ -73,6 +81,35 @@ describe('planSteps', () => {
     expect(flat(steps.reduce(countsAfter, state.knights))).toEqual({ 'tower:1': 1 });
   });
 
+  it('waits for the knight on the start area to leave before the new one lands', () => {
+    // Find the start area die 3 spawns on, and put the player's own knight there.
+    const fresh = rigRoll(initialState({ players: 3 }, 1), 3);
+    const start = apply(fresh, { type: 'roll', player: 0 }).events.find(
+      (e) => e.type === 'knightPlaced',
+    )!;
+    if (start.type !== 'knightPlaced') throw new Error('no spawn');
+    const occupied = { ...fresh, knights: { ...fresh.knights, [start.start]: [1, 0, 0] } };
+
+    const rolled = apply(occupied, { type: 'roll', player: 0 });
+    expect(planSteps(rolled.events).map((s) => s.kind)).toEqual(['roll', 'spawnPending']);
+    // Nothing lands yet: the board still shows the one knight.
+    expect(flat(planSteps(rolled.events).reduce(countsAfter, occupied.knights))).toEqual(
+      flat(occupied.knights),
+    );
+
+    const stepOff = legalActions(rolled.state, 0).find((a) => a.type === 'move')!;
+    const moved = apply(rolled.state, stepOff);
+    const steps = planSteps(moved.events);
+    expect(steps.map((s) => s.kind)).toEqual(['travel', 'place']);
+    expect(flat(steps.reduce(countsAfter, occupied.knights))).toEqual(flat(moved.state.knights));
+  });
+
+  it('marks a start area that cannot be cleared as blocked', () => {
+    expect(planSteps([{ type: 'placementSkipped', player: 1, start: 's2' }])).toEqual([
+      { kind: 'blocked', player: 1, start: 's2' },
+    ]);
+  });
+
   it('does not modify the counts it is given', () => {
     const before = { a: [2, 0, 0] };
     countsAfter(before, {
@@ -122,5 +159,19 @@ describe('countsAfter over whole games', () => {
         state = next;
       }
     }
+  });
+});
+
+describe('siege timing', () => {
+  it('only spends time on the shield flip when the castle has a shield', () => {
+    expect(siegeTiming({ shield: null }).reveal).toBe(0);
+    expect(siegeTiming({ shield: 0 }).reveal).toBeGreaterThan(0);
+    const t = siegeTiming({ shield: 2 });
+    expect(t.total).toBe(t.lunge + t.reveal + t.outcome);
+  });
+
+  it('needs twice the garrison and the shield', () => {
+    expect(siegeNeed({ garrison: 2, shield: 3 })).toBe(10);
+    expect(siegeNeed({ garrison: 3, shield: null })).toBe(6);
   });
 });

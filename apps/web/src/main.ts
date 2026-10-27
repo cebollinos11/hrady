@@ -171,6 +171,10 @@ function persist() {
 
 // --- Game flow -------------------------------------------------------------
 
+/** The knight waiting to spawn: its start area still holds the player's own knight. */
+const ghostOf = (state: GameState) =>
+  state.pendingSpawn === null ? null : { id: state.pendingSpawn, player: state.current };
+
 /** Shows a state on the board straight away (new game, undo, resume). */
 function snap() {
   animator.clear();
@@ -179,6 +183,7 @@ function snap() {
   const view = viewFor(shown, viewer());
   scene.showKnights(view.knights);
   scene.showCastles(view.castles);
+  scene.showGhost(ghostOf(shown));
   if (view.roll !== null) die.show(view.roll);
   render();
 }
@@ -232,6 +237,7 @@ function advance(next: Session) {
       const view = viewFor(after, viewer());
       scene.showKnights(view.knights);
       scene.showCastles(view.castles);
+      scene.showGhost(ghostOf(after));
       render();
     },
   });

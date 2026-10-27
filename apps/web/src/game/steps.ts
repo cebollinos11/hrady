@@ -9,7 +9,10 @@ import type { Contribution, GameEvent, PlayerId } from '@hrady/engine';
 export type Step =
   | { kind: 'roll'; player: PlayerId; value: number }
   | { kind: 'place'; player: PlayerId; start: string }
-  | { kind: 'skip'; player: PlayerId; start: string }
+  /** The start area holds the player's own knight: a ghost waits there until it has stepped off. */
+  | { kind: 'spawnPending'; player: PlayerId; start: string }
+  /** The knight on the start area cannot step off, so no new one spawns. */
+  | { kind: 'blocked'; player: PlayerId; start: string }
   /** Knights walking onto `to`; with `battle`, beating the defenders there first. */
   | {
       kind: 'travel';
@@ -42,9 +45,10 @@ export function planSteps(events: readonly GameEvent[]): Step[] {
           return { kind: 'roll', player: e.player, value: e.value };
         case 'knightPlaced':
           return { kind: 'place', player: e.player, start: e.start };
-        case 'placementSkipped':
         case 'spawnBlocked':
-          return { kind: 'skip', player: e.player, start: e.start };
+          return { kind: 'spawnPending', player: e.player, start: e.start };
+        case 'placementSkipped':
+          return { kind: 'blocked', player: e.player, start: e.start };
         case 'moved':
           return {
             kind: 'travel',
@@ -140,19 +144,37 @@ export function countsAfter(before: Knights, step: Step): Knights {
   return knights;
 }
 
+/**
+ * How a siege splits into its parts, in milliseconds at normal speed: the
+ * lunge, the shield flip (only when the castle has one) and the outcome.
+ */
+export function siegeTiming(step: { shield: number | null }) {
+  const lunge = 450;
+  const reveal = step.shield === null ? 0 : 900;
+  const outcome = 700;
+  return { lunge, reveal, outcome, total: lunge + reveal + outcome };
+}
+
+/** The attackers needed to take a castle: twice its defenders and shield. */
+export function siegeNeed(step: { garrison: number; shield: number | null }): number {
+  return 2 * (step.garrison + (step.shield ?? 0));
+}
+
 /** Milliseconds a step takes at normal speed; steps that only update the HUD take none. */
 export function stepDuration(step: Step): number {
   switch (step.kind) {
     case 'roll':
       return 900;
     case 'place':
-      return 350;
-    case 'skip':
-      return 250;
+      return 500;
+    case 'spawnPending':
+      return 600;
+    case 'blocked':
+      return 600;
     case 'travel':
-      return step.battle ? 900 : 450;
+      return step.battle ? 1200 : 450;
     case 'siege':
-      return step.won ? 900 : 1300;
+      return siegeTiming(step).total;
     case 'enter':
       return 450;
     case 'shield':

@@ -24,6 +24,8 @@ export interface BoardView {
   setTrailsVisible(visible: boolean): void;
   showKnights(knights: Knights): void;
   showCastles(castles: Record<string, CastleView>): void;
+  /** The knight hovering over a start area until the one standing there has left. */
+  showGhost(ghost: { id: string; player: PlayerId } | null): void;
   showMarks(marks: Marks): void;
   showTrails(trails: readonly Trail[]): void;
   showPings(ids: readonly string[]): void;
@@ -45,6 +47,34 @@ export interface BoardView {
   popup(id: string, text: string, colour: string, duration: number): Promise<void>;
   drop(id: string, player: PlayerId, duration: number): Promise<void>;
   dropShield(castleId: string, player: PlayerId, duration: number): Promise<void>;
+  pulse(id: string, colour: string, duration: number): Promise<void>;
+  /** A knight refused a place on a start area. */
+  reject(id: string, player: PlayerId, duration: number): Promise<void>;
+  dust(id: string, colour: string, duration: number, big?: boolean): Promise<void>;
+  /** Sparks and a jolt of the board where two sides meet. */
+  clash(id: string, duration: number): Promise<void>;
+  /** Jolts the whole board for a moment. */
+  shake(amount: number, duration: number): Promise<void>;
+  /** Defeated knights going down one by one; `shift` stands them apart across the screen. */
+  fall(
+    id: string,
+    player: PlayerId,
+    count: number,
+    duration: number,
+    shift?: number,
+  ): Promise<void>;
+  /** Turns a castle's shield face-up in the air and leaves it there. */
+  revealShield(
+    castle: string,
+    owner: PlayerId,
+    value: number,
+    label: string,
+    won: boolean,
+    duration: number,
+  ): Promise<void>;
+  /** Puts the revealed shield back on the castle, face-up. */
+  settleShield(castle: string, duration: number): Promise<void>;
+  shatterShield(castle: string, duration: number): Promise<void>;
   colour(player: PlayerId | null): string;
   resize(): void;
   /** Advances tweens and the camera; draws the frame unless `draw` is false. */

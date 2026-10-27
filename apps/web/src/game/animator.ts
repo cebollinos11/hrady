@@ -1,7 +1,14 @@
-import { playerName } from '../shared/describe';
 import type { DieView } from './dieView';
 import type { BoardView } from './boardView';
-import { countsAfter, departed, stepDuration, type Knights, type Step } from './steps';
+import {
+  countsAfter,
+  departed,
+  siegeNeed,
+  siegeTiming,
+  stepDuration,
+  type Knights,
+  type Step,
+} from './steps';
 
 /** One applied action to show: the knights shown before it, its steps and the final picture. */
 export interface Job {
@@ -84,55 +91,99 @@ export class Animator {
 
   private async play(step: Step, knights: Knights) {
     const ms = this.ms(step);
+    // Steps with several parts ask again for each, so a hurry also shortens the rest of them.
+    const part = (base: number) => (this.hurrying ? 0 : base * this.speed);
     const s = this.scene;
     switch (step.kind) {
       case 'roll':
         await this.die.throw(step.value, ms);
         return;
       case 'place':
+        // The ghost that waited for the start area turns solid as it lands.
+        s.showGhost(null);
         s.showKnights(countsAfter(knights, step));
-        await s.drop(step.start, step.player, ms);
+        await s.drop(step.start, step.player, ms * 0.7);
+        await s.dust(step.start, s.colour(step.player), part(stepDuration(step) * 0.3));
         return;
-      case 'skip':
-        await s.popup(step.start, `${playerName(step.player)} already here`, '#dddddd', ms);
+      case 'spawnPending':
+        s.showGhost({ id: step.start, player: step.player });
+        await s.pulse(step.start, s.colour(step.player), ms);
+        return;
+      case 'blocked':
+        await s.reject(step.start, step.player, ms);
         return;
       case 'travel': {
         s.showKnights(departed(knights, step));
-        const walk = step.battle ? ms * 0.55 : ms;
-        await Promise.all(
-          step.sources.map((c) => s.travel(step.player, c.from, step.to, c.count, walk)),
-        );
-        if (step.battle) {
-          s.showKnights(countsAfter(knights, step));
-          await s.burst(step.to, s.colour(step.player), ms - walk);
+        if (!step.battle) {
+          await Promise.all(
+            step.sources.map((c) => s.travel(step.player, c.from, step.to, c.count, ms)),
+          );
+          return;
         }
+        // The attackers arrive, clash with the defenders, who fall as the victors settle in.
+        const { defender, defeated } = step.battle;
+        const total = stepDuration(step);
+        await Promise.all(
+          step.sources.map((c) => s.travel(step.player, c.from, step.to, c.count, ms * 0.4)),
+        );
+        const fight = part(total * 0.6);
+        const falling = s.fall(step.to, defender, defeated, fight * 0.8, -0.5);
+        s.showKnights(countsAfter(knights, step));
+        await Promise.all([
+          falling,
+          s.clash(step.to, fight),
+          s.burst(step.to, s.colour(step.player), fight),
+        ]);
         return;
       }
       case 'siege': {
-        const defence =
-          step.shield === null
-            ? step.defender === null
-              ? `${step.garrison} ⚔`
-              : 'No shield'
-            : `Shield ${step.shield}`;
-        // The attackers leave their marker for the lunge and come back if they win.
-        const away = countsAfter(knights, { ...step, won: false });
-        s.showKnights(away);
-        await Promise.all([
-          s.travel(step.player, step.from, step.castle, step.attackers, ms * 0.5, true),
-          s.popup(
-            step.castle,
-            `${defence} · ${step.won ? 'taken' : 'held'}`,
-            step.won ? '#ffffff' : '#ffb4a8',
-            ms * 0.8,
-          ),
-        ]);
-        s.showKnights(countsAfter(knights, step));
-        await s.burst(
-          step.won ? step.castle : step.from,
-          step.won ? s.colour(step.player) : '#ff3b2f',
-          ms * 0.4,
+        const time = siegeTiming(step);
+        // The attackers leave their marker for the lunge and come back if they lose.
+        s.showKnights(countsAfter(knights, { ...step, won: false }));
+        await s.travel(
+          step.player,
+          step.from,
+          step.castle,
+          step.attackers,
+          ms * (time.lunge / time.total),
+          true,
         );
+        const shielded = step.shield !== null && step.defender !== null;
+        if (shielded)
+          await s.revealShield(
+            step.castle,
+            step.defender!,
+            step.shield!,
+            `${step.attackers} VS ${siegeNeed(step)}`,
+            step.won,
+            part(time.reveal),
+          );
+        const outcome = part(time.outcome);
+        const after = countsAfter(knights, step);
+        if (step.won) {
+          // The defenders of the castle fall; its shield breaks.
+          const falling =
+            step.defender === null
+              ? Promise.resolve()
+              : s.fall(step.castle, step.defender, step.garrison, outcome * 0.8);
+          s.showKnights(after);
+          await Promise.all([
+            falling,
+            shielded ? s.shatterShield(step.castle, outcome) : Promise.resolve(),
+            s.dust(step.castle, s.colour(step.player), outcome, true),
+            s.burst(step.castle, s.colour(step.player), outcome),
+          ]);
+        } else {
+          // Every attacker on the marker falls; the shield stays, face-up.
+          const falling = s.fall(step.from, step.player, step.attackers, outcome * 0.8);
+          s.showKnights(after);
+          await Promise.all([
+            falling,
+            shielded ? s.settleShield(step.castle, outcome * 0.5) : Promise.resolve(),
+            s.shake(1, outcome * 0.4),
+            s.burst(step.from, '#ff3b2f', outcome),
+          ]);
+        }
         return;
       }
       case 'enter':

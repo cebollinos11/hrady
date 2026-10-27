@@ -16,7 +16,15 @@ import {
 import { TILE, type Look, type Terrain } from './look';
 import { line, ring } from './pixel/draw';
 import { drawText, textWidth } from './pixel/font';
-import { INK, drawBadge, drawLabel, drawShield, type Ctx, type Sprite } from './pixel/sprites';
+import {
+  INK,
+  canvasOf,
+  drawBadge,
+  drawLabel,
+  drawShield,
+  type Ctx,
+  type Sprite,
+} from './pixel/sprites';
 import type { Trail } from './recent';
 import { pathLength, pointAt } from './route';
 import type { Knights } from './steps';
@@ -109,7 +117,36 @@ type Effect =
   | { kind: 'ring'; id: string; colour: string; t: number }
   | { kind: 'text'; id: string; text: string; colour: string; t: number }
   | { kind: 'shield'; id: string; colour: string; t: number }
-  | { kind: 'walk'; player: PlayerId; count: number; x: number; z: number; y: number };
+  | { kind: 'walk'; player: PlayerId; count: number; x: number; z: number; y: number }
+  /** Rings that beat twice on a node. */
+  | { kind: 'pulse'; id: string; colour: string; t: number }
+  /** A knight that was refused a place: sinks and fades in red. */
+  | { kind: 'reject'; id: string; player: PlayerId; t: number }
+  /** A cloud of dust kicked up on a node. */
+  | { kind: 'dust'; id: string; colour: string; t: number; big: boolean }
+  | { kind: 'sparks'; id: string; t: number }
+  /** Knights that fall one by one at a world point, with `t` the progress of all of them. */
+  | { kind: 'fall'; player: PlayerId; count: number; x: number; z: number; t: number }
+  /**
+   * A castle shield lifted and turned over. `flip` raises it, turns it and holds it
+   * face-up; then `settle` lowers it back or `shatter` breaks it. `t` is the
+   * progress of the current mode.
+   */
+  | {
+      kind: 'reveal';
+      id: string;
+      colour: string;
+      value: number;
+      label: string;
+      labelColour: string;
+      mode: 'flip' | 'settle' | 'shatter';
+      t: number;
+    };
+
+/** How high a knight hovers before it lands, in art pixels. */
+const SPAWN_HEIGHT = 24;
+/** How far a revealed shield is lifted above its place on the castle. */
+const REVEAL_LIFT = 15;
 
 interface Drawable {
   depth: number;
@@ -133,6 +170,12 @@ export class PixelScene implements BoardView {
   /** Vertical offset in art pixels of a stack that is dropping in, by `node:player`. */
   private lifts = new Map<string, number>();
   private now = 0;
+  /** The knight waiting to spawn once the one on its start area has stepped off. */
+  private ghost: { id: string; player: PlayerId } | null = null;
+  /** Camera shake in art pixels. */
+  private shakeX = 0;
+  private shakeY = 0;
+  private readonly shields = new Map<string, HTMLCanvasElement>();
   /** Art coordinates at the middle of the canvas, and pixels per art pixel. */
   camX = 0;
   camY = 0;
@@ -353,6 +396,9 @@ export class PixelScene implements BoardView {
   showCastles(castles: Record<string, CastleView>) {
     this.castles = castles;
   }
+  showGhost(ghost: { id: string; player: PlayerId } | null) {
+    this.ghost = ghost && this.layout.nodes.has(ghost.id) ? ghost : null;
+  }
   showMarks(marks: Marks) {
     this.marks = marks;
   }
@@ -485,8 +531,110 @@ export class PixelScene implements BoardView {
 
   async drop(id: string, player: PlayerId, duration: number) {
     const key = `${id}:${player}`;
-    await this.tween(duration, (t) => this.lifts.set(key, Math.round((1 - t * t) * 40)));
+    await this.tween(duration, (t) => this.lifts.set(key, Math.round((1 - t * t) * SPAWN_HEIGHT)));
     this.lifts.delete(key);
+  }
+
+  /** Two beats of rings: points out the knight that has to step off. */
+  async pulse(id: string, colour: string, duration: number) {
+    await this.effect<'pulse'>({ kind: 'pulse', id, colour, t: 0 }, duration);
+  }
+
+  /** A knight that finds no room: it sinks into the start area and fades out. */
+  async reject(id: string, player: PlayerId, duration: number) {
+    await this.effect<'reject'>({ kind: 'reject', id, player, t: 0 }, duration);
+  }
+
+  /** Dust kicked up where knights land or clash. */
+  async dust(id: string, colour: string, duration: number, big = false) {
+    await this.effect<'dust'>({ kind: 'dust', id, colour, t: 0, big }, duration);
+  }
+
+  /** Sparks of a clash of arms and a jolt of the whole board. */
+  async clash(id: string, duration: number) {
+    await Promise.all([
+      this.effect<'sparks'>({ kind: 'sparks', id, t: 0 }, duration * 0.6),
+      this.shake(2, duration * 0.5),
+    ]);
+  }
+
+  /**
+   * `count` defeated knights of `player` on a node fall one by one. They stand
+   * where the node's knights stand now, `shift` stands apart (across the screen,
+   * in knight widths) so that the victors can take their place on a marker.
+   */
+  async fall(id: string, player: PlayerId, count: number, duration: number, shift = 0) {
+    if (count <= 0) return;
+    const at = this.standPoint(id, player);
+    const o = this.look.across(shift);
+    await this.effect<'fall'>(
+      { kind: 'fall', player, count, x: at.x + o.x, z: at.z + o.z, t: 0 },
+      duration,
+    );
+  }
+
+  async shake(amount: number, duration: number) {
+    await this.tween(duration, (t) => {
+      const k = (1 - t) * amount;
+      this.shakeX = t < 1 ? Math.round(Math.sin(t * 70) * k) : 0;
+      this.shakeY = t < 1 ? Math.round(Math.cos(t * 53) * k) : 0;
+    });
+  }
+
+  /**
+   * Lifts the face-down shield of a castle and turns it over, leaving it
+   * face-up in the air until `settleShield` or `shatterShield`. The label says
+   * how the siege stands (attackers against the number they need).
+   */
+  async revealShield(
+    castle: string,
+    owner: PlayerId,
+    value: number,
+    label: string,
+    won: boolean,
+    duration: number,
+  ) {
+    const e: Effect = {
+      kind: 'reveal',
+      id: castle,
+      colour: colourOf(owner),
+      value,
+      label,
+      labelColour: won ? '#9ee59e' : '#ffb4a8',
+      mode: 'flip',
+      t: 0,
+    };
+    this.effects.add(e);
+    await this.tween(duration, (t) => (e.t = t));
+  }
+
+  /** Lowers the revealed shield to its place on the castle, where it stays face-up. */
+  async settleShield(castle: string, duration: number) {
+    await this.endReveal(castle, 'settle', duration);
+  }
+
+  /** Breaks the revealed shield into pieces. */
+  async shatterShield(castle: string, duration: number) {
+    await this.endReveal(castle, 'shatter', duration);
+  }
+
+  private async endReveal(castle: string, mode: 'settle' | 'shatter', duration: number) {
+    const e = [...this.effects].find((f) => f.kind === 'reveal' && f.id === castle);
+    if (!e || e.kind !== 'reveal') return;
+    e.mode = mode;
+    e.t = 0;
+    await this.tween(duration, (t) => (e.t = t));
+    this.effects.delete(e);
+  }
+
+  /** Runs an effect for `duration` and removes it. */
+  private async effect<K extends Effect['kind']>(
+    e: Extract<Effect, { kind: K; t: number }>,
+    duration: number,
+  ) {
+    this.effects.add(e);
+    await this.tween(duration, (t) => (e.t = t));
+    this.effects.delete(e);
   }
 
   async dropShield(castleId: string, player: PlayerId, duration: number) {
@@ -515,8 +663,8 @@ export class PixelScene implements BoardView {
 
   private paint() {
     const ctx = this.ctx;
-    const ox = Math.round(this.width / 2 - this.camX);
-    const oy = Math.round(this.height / 2 - this.camY);
+    const ox = Math.round(this.width / 2 - this.camX) + this.shakeX;
+    const oy = Math.round(this.height / 2 - this.camY) + this.shakeY;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = SKY;
     ctx.fillRect(0, 0, this.width, this.height);
@@ -610,15 +758,27 @@ export class PixelScene implements BoardView {
     spacing: number,
     lift: number,
     y = 0,
+    /** Fades out figure `i` of `n`: its opacity and how far it has sunk in art pixels. */
+    fade?: (i: number, n: number) => { alpha: number; sink: number },
   ) {
     const colour = colourOf(player);
-    for (const f of arrange(compose(count), spacing)) {
+    const figures = arrange(compose(count), spacing);
+    figures.forEach((f, i) => {
       const o = this.look.figure(f);
       const p = { x: at.x + o.x, z: at.z + o.z };
       const s = this.look.knight(f.size as FigureSize, colour);
       const a = this.ground(p, y);
-      out.push({ depth: p.x + p.z + 0.01, draw: (ctx) => blit(ctx, s, a.x, a.y - lift) });
-    }
+      const { alpha, sink } = fade?.(i, figures.length) ?? { alpha: 1, sink: 0 };
+      if (alpha <= 0) return;
+      out.push({
+        depth: p.x + p.z + 0.01,
+        draw: (ctx) => {
+          ctx.globalAlpha = alpha;
+          blit(ctx, s, a.x, a.y - lift + sink);
+          ctx.globalAlpha = 1;
+        },
+      });
+    });
   }
 
   private collectKnights(out: Drawable[]) {
@@ -637,8 +797,17 @@ export class PixelScene implements BoardView {
         );
       });
     }
-    for (const e of this.effects)
+    for (const e of this.effects) {
       if (e.kind === 'walk') this.figures(out, e.player, e.count, e, 0.3, 0, e.y);
+      if (e.kind === 'fall')
+        // One after the other, each flickering as it sinks away.
+        this.figures(out, e.player, e.count, e, 0.3, 0, 0, (i, n) => {
+          const p = Math.max(0, Math.min(1, (e.t - (i / n) * 0.5) / 0.5));
+          if (p >= 1) return { alpha: 0, sink: 0 };
+          const flicker = p > 0 && Math.floor(this.now / 70) % 2 === 0;
+          return { alpha: flicker ? 0.45 : 1 - p * 0.6, sink: Math.round(p * 5) };
+        });
+    }
   }
 
   /** Badges, shields, labels, trails and effects: always on top, never hidden by a castle. */
@@ -663,8 +832,15 @@ export class PixelScene implements BoardView {
       drawBadge(ctx, a.x, a.y - 18, e.count, colourOf(e.player));
     }
 
+    if (this.ghost) this.paintGhost(ctx, this.ghost.id, this.ghost.player);
+
+    // A shield being turned over is drawn by its effect instead.
+    const revealing = new Set(
+      [...this.effects].flatMap((e) => (e.kind === 'reveal' ? [e.id] : [])),
+    );
     for (const [id, view] of Object.entries(this.castles)) {
-      if (!view.shield || view.owner === null || !this.layout.nodes.has(id)) continue;
+      if (!view.shield || view.owner === null || !this.layout.nodes.has(id) || revealing.has(id))
+        continue;
       const a = this.ground(this.node(id).pos);
       const s = view.shield;
       const text = s.revealed ? String(s.value ?? '?') : s.value === null ? '?' : `(${s.value})`;
@@ -713,7 +889,7 @@ export class PixelScene implements BoardView {
   }
 
   private paintEffect(ctx: Ctx, e: Effect) {
-    if (e.kind === 'walk') return;
+    if (e.kind === 'walk' || e.kind === 'fall') return;
     const n = this.node(e.id);
     const a = this.ground(n.pos);
     if (e.kind === 'ring') {
@@ -728,9 +904,141 @@ export class PixelScene implements BoardView {
         (n.node.type === 'castle' ? this.look.popup.castle : this.look.popup.other) -
         Math.round(e.t * 12);
       if (e.t < 0.9) drawLabel(ctx, e.text, a.x, y, e.colour);
-    } else {
+    } else if (e.kind === 'shield') {
       const y = a.y + this.look.shield.y - Math.round((1 - e.t * e.t) * 50);
       drawShield(ctx, a.x + this.look.shield.x, y, e.colour, '', false);
+    } else if (e.kind === 'pulse') {
+      // Two beats: a ring that swells and fades, twice.
+      const beat = (e.t * 2) % 1;
+      const rx = this.look.rings.start - 2 + Math.round(beat * 8);
+      if (e.t < 1)
+        ring(ctx, a.x, a.y + 1, rx, rx * this.look.squash, beat < 0.7 ? e.colour : '#ffffff', 2);
+    } else if (e.kind === 'reject') {
+      this.paintGhost(ctx, e.id, e.player, e.t);
+    } else if (e.kind === 'dust') {
+      this.paintDust(ctx, e, a);
+    } else if (e.kind === 'sparks') {
+      this.paintSparks(ctx, e, a);
+    } else if (e.kind === 'reveal') {
+      this.paintReveal(ctx, e, a);
+    }
+  }
+
+  /**
+   * A see-through knight hovering over a start area. Waiting, it bobs and a ring
+   * marks where it will land; refused (`refused` is how far it has got), it turns
+   * red and sinks.
+   */
+  private paintGhost(ctx: Ctx, id: string, player: PlayerId, refused: number | null = null) {
+    const a = this.ground(this.standPoint(id, player));
+    const bob = refused === null ? Math.round(Math.sin(this.now / 260)) : 0;
+    const sink = refused === null ? 0 : Math.round(refused * SPAWN_HEIGHT);
+    const colour = refused === null ? colourOf(player) : '#ff5a4d';
+    if (refused === null) {
+      const rx = this.look.rings.start - 3;
+      ring(ctx, a.x, a.y + 1, rx, rx * this.look.squash, colour, 1);
+    }
+    ctx.globalAlpha = refused === null ? 0.75 : 0.8 * (1 - refused);
+    blit(ctx, this.look.knight(1, colour), a.x, a.y - SPAWN_HEIGHT - bob + sink);
+    ctx.globalAlpha = 1;
+  }
+
+  private paintDust(ctx: Ctx, e: Extract<Effect, { kind: 'dust' }>, a: { x: number; y: number }) {
+    if (e.t >= 0.95) return;
+    const n = e.big ? 12 : 8;
+    const reach = e.big ? 16 : 9;
+    for (let k = 0; k < n; k++) {
+      const angle = (k / n) * Math.PI * 2 + (k % 2) * 0.3;
+      const r = reach * (0.35 + 0.65 * Math.sqrt(e.t)) * (0.7 + (0.3 * ((k * 7) % 3)) / 2);
+      const x = Math.round(a.x + Math.cos(angle) * r);
+      const y = Math.round(a.y - 1 + Math.sin(angle) * r * this.look.squash - e.t * 5);
+      const size = e.t < 0.45 ? 2 : 1;
+      ctx.fillStyle = k % 3 === 0 ? e.colour : '#d8cfb8';
+      ctx.fillRect(x, y, size, size);
+    }
+  }
+
+  private paintSparks(
+    ctx: Ctx,
+    e: Extract<Effect, { kind: 'sparks' }>,
+    a: { x: number; y: number },
+  ) {
+    if (e.t >= 0.95) return;
+    const cy = a.y - 7;
+    // A flash first, then sparks flying out and falling.
+    if (e.t < 0.3) {
+      ctx.fillStyle = e.t < 0.15 ? '#ffffff' : '#fff6c0';
+      ctx.fillRect(a.x - 3, cy - 1, 7, 3);
+      ctx.fillRect(a.x - 1, cy - 3, 3, 7);
+    }
+    for (let k = 0; k < 10; k++) {
+      const angle = (k / 10) * Math.PI * 2 + 0.4;
+      const r = 4 + e.t * (10 + (k % 3) * 4);
+      const x = Math.round(a.x + Math.cos(angle) * r);
+      const y = Math.round(cy + Math.sin(angle) * r * 0.8 + e.t * e.t * 8);
+      ctx.fillStyle = k % 2 === 0 ? '#fff6c0' : '#ffd34a';
+      const size = e.t < 0.5 ? 2 : 1;
+      ctx.fillRect(x, y, size, size);
+      if (e.t < 0.5) ctx.fillRect(Math.round((x + a.x) / 2), Math.round((y + cy) / 2), 1, 1);
+    }
+  }
+
+  /** A shield pre-rendered at its full size, to be drawn narrower while it turns. */
+  private shieldImage(colour: string, text: string, revealed: boolean) {
+    const key = `${colour}|${text}|${revealed}`;
+    let c = this.shields.get(key);
+    if (!c) {
+      const w = Math.max(11, textWidth(text) + 5);
+      const [canvas, ctx] = canvasOf(w, 14);
+      drawShield(ctx, 0, 0, colour, text, revealed);
+      this.shields.set(key, (c = canvas));
+    }
+    return c;
+  }
+
+  private paintReveal(
+    ctx: Ctx,
+    e: Extract<Effect, { kind: 'reveal' }>,
+    a: { x: number; y: number },
+  ) {
+    const text = String(e.value);
+    const hx = a.x + this.look.shield.x;
+    const hy = a.y + this.look.shield.y;
+    const face = this.shieldImage(e.colour, text, true);
+    const back = this.shieldImage(e.colour, '?', false);
+    const place = (img: HTMLCanvasElement, y: number, scale = 1) => {
+      const w = Math.max(1, Math.round(img.width * scale));
+      // Turn about the middle of the shield.
+      ctx.drawImage(img, hx + Math.floor((img.width - w) / 2), y, w, img.height);
+    };
+
+    if (e.mode === 'flip') {
+      const rise = Math.min(1, e.t / 0.25);
+      const y = hy - Math.round((1 - (1 - rise) ** 2) * REVEAL_LIFT);
+      const turn = Math.max(0, Math.min(1, (e.t - 0.25) / 0.35));
+      // One full turn is a half circle for the face-down side, then the face-up side opens.
+      const width = Math.abs(Math.cos(turn * Math.PI));
+      if (turn < 0.5) place(back, y, width);
+      else place(face, y, width);
+      if (e.t >= 0.6)
+        drawLabel(ctx, e.label, hx + Math.floor(face.width / 2), y - 4, e.labelColour);
+    } else if (e.mode === 'settle') {
+      place(face, hy - Math.round((1 - e.t * e.t) * REVEAL_LIFT));
+    } else {
+      this.paintShards(ctx, e, hx + Math.floor(face.width / 2), hy - REVEAL_LIFT + 6);
+    }
+  }
+
+  private paintShards(ctx: Ctx, e: Extract<Effect, { kind: 'reveal' }>, cx: number, cy: number) {
+    if (e.t >= 0.95) return;
+    const palette = [e.colour, '#efe2c0', INK, '#ffffff'];
+    for (let k = 0; k < 14; k++) {
+      const angle = (k / 14) * Math.PI * 2 + (k % 3) * 0.2;
+      const speed = 8 + (k % 4) * 4;
+      const x = Math.round(cx + Math.cos(angle) * speed * e.t * 1.6);
+      const y = Math.round(cy + Math.sin(angle) * speed * e.t * 0.9 + e.t * e.t * 26);
+      ctx.fillStyle = palette[k % palette.length]!;
+      ctx.fillRect(x, y, k % 2 ? 3 : 2, 2);
     }
   }
 
