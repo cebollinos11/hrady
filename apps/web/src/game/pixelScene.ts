@@ -38,7 +38,15 @@ import type { Knights } from './steps';
  */
 
 const SKY = '#1d2a1f';
-const ZOOMS = [1, 1.5, 2, 3, 4, 5, 6];
+const ZOOMS = [1, 2, 3, 4, 5, 6];
+
+/**
+ * Pixel-perfect zoom: every art pixel must cover a whole number of device
+ * pixels, or lines come out one pixel thicker here and thinner there.
+ */
+const dpr = () => Math.max(1, window.devicePixelRatio || 1);
+const snap = (z: number, round = Math.round) => Math.max(1, round(z * dpr() + 1e-6)) / dpr();
+const zoomSteps = () => [...new Set(ZOOMS.map((z) => snap(z)))];
 /** Most figures drawn for one stack, however many knights it holds. */
 const MAX_FIGURES = 3;
 const NEUTRAL = '#efe9dc';
@@ -72,10 +80,14 @@ class PixelRig implements ViewRig {
   go(preset: Preset, focus: readonly Point[] = [], instant = false) {
     this.preset = preset;
     const target = this.view.framing(preset, focus);
-    this.view.zoom = target.zoom;
-    this.flight = instant
-      ? null
-      : { fromX: this.view.camX, fromY: this.view.camY, start: performance.now() };
+    const from = { x: this.view.camX, y: this.view.camY };
+    if (target.zoom !== this.view.zoom) {
+      this.view.zoom = target.zoom;
+      // The art canvas is sized for a zoom; resizing re-fits a preset, so frame again below.
+      this.view.resize();
+      this.preset = preset;
+    }
+    this.flight = instant ? null : { fromX: from.x, fromY: from.y, start: performance.now() };
     this.to = target;
     if (instant) this.view.lookAt(target.x, target.y);
   }
@@ -188,6 +200,9 @@ export class PixelScene implements BoardView {
   zoom = 2;
   private width = 1;
   private height = 1;
+  /** Where the art is drawn; `canvas` shows it magnified by whole device pixels. */
+  private readonly art = document.createElement('canvas');
+  private readonly screen: CanvasRenderingContext2D;
 
   constructor(
     readonly canvas: HTMLCanvasElement,
@@ -198,7 +213,8 @@ export class PixelScene implements BoardView {
     private readonly adaptive = layout === undefined,
   ) {
     this.layout = layout ?? buildLayout(board);
-    this.ctx = canvas.getContext('2d', { alpha: false })!;
+    this.screen = canvas.getContext('2d', { alpha: false })!;
+    this.ctx = this.art.getContext('2d', { alpha: false })!;
     this.terrain = look.terrain(this.layout);
     this.rig = new PixelRig(this);
     this.attachControls();
@@ -230,18 +246,20 @@ export class PixelScene implements BoardView {
     const cssW = this.canvas.clientWidth || 800;
     const cssH = Math.max(1, (this.canvas.clientHeight || 600) - inset);
     const fit = (w: number, h: number) => {
-      let best = ZOOMS[0]!;
-      for (const z of ZOOMS) if (w * z <= cssW && h * z <= cssH) best = z;
+      const zooms = zoomSteps();
+      let best = zooms[0]!;
+      for (const z of zooms) if (w * z <= cssW && h * z <= cssH) best = z;
       return best;
     };
     // The overview fills the free space as far as the board's shape allows; the rest is letterbox.
     const [bw, bh] = [b.right - b.left + 12, b.bottom - b.top + 12];
-    const overview = Math.max(ZOOMS[0]!, Math.min(ZOOMS.at(-1)!, cssW / bw, cssH / bh));
+    const zooms = zoomSteps();
+    const overview = snap(Math.max(zooms[0]!, Math.min(zooms.at(-1)!, cssW / bw, cssH / bh)), Math.floor);
     const at = (zoom: number, x: number, y: number) => ({ zoom, x, y: y - inset / (2 * zoom) });
     const mid = { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 };
     const step = (z: number, n: number) => {
-      const above = ZOOMS.filter((v) => v > z + 1e-6);
-      return above[Math.min(above.length, n) - 1] ?? ZOOMS.at(-1)!;
+      const above = zooms.filter((v) => v > z + 1e-6);
+      return above[Math.min(above.length, n) - 1] ?? zooms.at(-1)!;
     };
     if (preset === 'overview') return at(overview, mid.x, mid.y);
     if (preset === 'table') return at(step(overview, 1), mid.x, mid.y);
@@ -254,7 +272,8 @@ export class PixelScene implements BoardView {
   }
 
   private setZoom(zoom: number, anchor?: { x: number; y: number }) {
-    zoom = Math.max(ZOOMS[0]!, Math.min(ZOOMS.at(-1)!, zoom));
+    const zooms = zoomSteps();
+    zoom = snap(Math.max(zooms[0]!, Math.min(zooms.at(-1)!, zoom)));
     if (zoom === this.zoom) return;
     // Keep the art point under the cursor where it is.
     const rect = this.canvas.getBoundingClientRect();
@@ -268,8 +287,9 @@ export class PixelScene implements BoardView {
   }
 
   private stepZoom(dir: number, anchor?: { x: number; y: number }) {
-    const i = ZOOMS.findIndex((z) => z >= this.zoom - 1e-6);
-    this.setZoom(ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, i + dir))]!, anchor);
+    const zooms = zoomSteps();
+    const i = zooms.findIndex((z) => z >= this.zoom - 1e-6);
+    this.setZoom(zooms[Math.max(0, Math.min(zooms.length - 1, i + dir))]!, anchor);
   }
 
   private attachControls() {
@@ -326,11 +346,17 @@ export class PixelScene implements BoardView {
 
   resize() {
     const { clientWidth: w, clientHeight: h } = this.canvas;
-    this.width = Math.max(1, Math.ceil(w / this.zoom));
-    this.height = Math.max(1, Math.ceil(h / this.zoom));
-    this.canvas.width = this.width;
-    this.canvas.height = this.height;
+    this.zoom = snap(this.zoom);
+    // The screen canvas has one pixel per device pixel; the art is a whole-number fraction of it.
+    const scale = this.scale;
+    this.canvas.width = Math.max(1, Math.round(w * dpr()));
+    this.canvas.height = Math.max(1, Math.round(h * dpr()));
+    this.width = Math.max(1, Math.ceil(this.canvas.width / scale));
+    this.height = Math.max(1, Math.ceil(this.canvas.height / scale));
+    this.art.width = this.width;
+    this.art.height = this.height;
     this.ctx.imageSmoothingEnabled = false;
+    this.screen.imageSmoothingEnabled = false;
     this.fitDirty = true;
     this.fit(performance.now());
     this.rig.refit();
@@ -460,19 +486,17 @@ export class PixelScene implements BoardView {
 
   private toClient(a: { x: number; y: number }) {
     const rect = this.canvas.getBoundingClientRect();
-    const k = rect.width / this.width;
-    const kv = rect.height / this.height;
     return {
-      x: rect.left + (a.x - this.camX + this.width / 2) * k,
-      y: rect.top + (a.y - this.camY + this.height / 2) * kv,
+      x: rect.left + (a.x - this.camX + this.width / 2) * this.zoom,
+      y: rect.top + (a.y - this.camY + this.height / 2) * this.zoom,
     };
   }
 
   private toArt(clientX: number, clientY: number) {
     const rect = this.canvas.getBoundingClientRect();
     return {
-      x: this.camX - this.width / 2 + ((clientX - rect.left) / rect.width) * this.width,
-      y: this.camY - this.height / 2 + ((clientY - rect.top) / rect.height) * this.height,
+      x: this.camX - this.width / 2 + (clientX - rect.left) / this.zoom,
+      y: this.camY - this.height / 2 + (clientY - rect.top) / this.zoom,
     };
   }
 
@@ -723,6 +747,18 @@ export class PixelScene implements BoardView {
     for (const d of things) d.draw(ctx);
 
     this.paintTop(ctx);
+    this.present();
+  }
+
+  /** Device pixels per art pixel: always a whole number. */
+  private get scale() {
+    return Math.max(1, Math.round(this.zoom * dpr()));
+  }
+
+  /** Copies the art to the screen canvas, each art pixel a square of whole device pixels. */
+  private present() {
+    const s = this.scale;
+    this.screen.drawImage(this.art, 0, 0, this.width * s, this.height * s);
   }
 
   /** Glints that drift across the river. */
