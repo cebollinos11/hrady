@@ -177,6 +177,76 @@ Sounds, animations for battles/reveals, tutorial/rules overlay, i18n
 accessibility (colour-blind-safe player colours + patterns),
 end-game summary, save/resume local games, game replays.
 
+#### 7a — Spawn, battle and reveal animations (detailed)
+
+Scope: visuals only (no audio yet; the new steps expose named hooks such as
+`spawn`, `clash`, `reveal`, `capture` so sounds can attach later). Everything
+is planned from public engine events in `apps/web/src/game/steps.ts` and played
+by `animator.ts`, so every viewer (including spectators) sees the same thing.
+The existing speed setting and click-to-`hurry()` keep working: every new
+effect must finish instantly when `ms = 0`.
+
+**Spawn.** The die lands, then the new knight drops onto the start area with a
+short landing puff in the player's colour (replaces the plain drop).
+
+**Spawn onto your own knight.** The engine emits `spawnBlocked` on the roll;
+the knight that must leave is moved by the player's first move, after which the
+engine emits `knightPlaced` on that start area. Show this as a sequence rather
+than the current "already here" text popup:
+1. Die lands → the occupying knight pulses (outline/glow) and a translucent
+   ghost knight appears above the start area.
+2. Ghost stays while the player makes the forced first move (the HUD hint says
+   the start area must be cleared first).
+3. When `knightPlaced` arrives the ghost solidifies and drops in.
+A new step kind `spawnPending` replaces `skip` for `spawnBlocked`;
+`placementSkipped` (all neighbours held by enemies, no knight placed) keeps a
+short "blocked" cue: the ghost fades out with a red tint instead of landing.
+The ghost must be restored from the state on load/reconnect (pending when the
+start area holds the player's knight during the move phase with placement
+not yet done), not only from the event stream.
+
+**Field battle (~1.2 s, "clash + casualties").**
+1. Attackers walk in from every contributing marker (already supported).
+2. Clash: a dust/spark burst at the target, a small camera shake (a few px,
+   ~150 ms), figures lean towards each other.
+3. Casualties: defenders fall/fade one by one (staggered ~80 ms), tinted in
+   their colour; attackers settle onto the marker.
+No new engine data needed: `fieldBattle` already has `defeated` and the
+defender.
+
+**Castle attack and shield reveal.**
+1. Attackers lunge towards the castle (existing).
+2. If the castle has a shield, it rises and flips in 3D to show its value
+   (0–3), then holds for ~400 ms. The value is already public in the
+   `castleAttacked` event, so no hidden information is leaked earlier than the
+   rules allow.
+3. Resolution: on a win the shield shatters and the flag/colour of the castle
+   changes to the attacker; on a loss the shield stays face-up on the castle
+   and the attackers fall (all knights on the marker go to supply).
+4. Neutral castles (no shield) skip the flip and go straight to resolution.
+The old text popup is removed; the numbers it showed (attackers vs
+2×(garrison + shield)) can stay as a small label next to the flipped shield.
+
+**Own shield placement.** A won castle's owner places a random face-down
+shield: the tile drops face-down onto the castle (existing `dropShield`),
+without showing the value to anyone else (only face-down in the redacted view).
+
+**Implementation steps**
+1. Extend `Step` (`spawnPending`, `clash`, `reveal`) and `planSteps`/
+   `countsAfter`/`stepDuration`, with unit tests in `apps/web/test` for each
+   event sequence (spawn blocked then placed; blocked-then-skipped; attack with
+   and without shield; win and loss).
+2. Add the scene primitives to `pixelScene.ts`/`figures.ts`: ghost knight,
+   pulse, camera shake, staggered fade of figures, 3D shield flip + shatter.
+3. Wire them in `animator.ts` (`hurrying` ⇒ zero-duration), and restore the
+   spawn ghost from state on resume/reconnect.
+4. Playwright check in `apps/web/scripts` that plays a scripted game with a
+   blocked spawn, a field battle and a shielded castle attack and asserts the
+   queue drains (no stuck animator) in normal, fast and hurry modes.
+**Done when:** each of the four situations above plays correctly in local and
+online games, `hurry()` never leaves a ghost or half-faded figure behind, and
+the animator tests pass.
+
 ---
 
 ## 4. Risks
