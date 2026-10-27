@@ -193,16 +193,17 @@ export class BoardScene {
   }
 
   private addBoardPieces() {
-    for (const edge of this.layout.edges) {
+    const ground = (p: Point) => Math.max(heightAt(this.layout, p), WATER_Y) + 0.012;
+    for (const edge of [...this.layout.edges, ...this.layout.entrances]) {
       for (const p of edge.dots) {
         const d = dot();
-        d.position.set(p.x, Math.max(heightAt(this.layout, p), WATER_Y) + 0.012, p.z);
+        d.position.set(p.x, ground(p), p.z);
         this.scene.add(d);
       }
     }
     for (const e of this.layout.entrances) {
       const arrow = entranceArrow();
-      arrow.position.set(e.pos.x, 0.012, e.pos.z);
+      arrow.position.set(e.pos.x, ground(e.pos), e.pos.z);
       arrow.rotation.y = e.angle;
       this.scene.add(arrow);
     }

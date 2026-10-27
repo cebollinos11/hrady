@@ -42,14 +42,22 @@ export interface DottedEdge {
   dots: Point[];
 }
 
-/** A castle entrance: an arrowhead on the marker pointing at the castle. */
+/**
+ * A castle entrance: an arrowhead pointing at the castle, just in front of it,
+ * and dots leading to it from the marker when the two are far apart.
+ */
 export interface Entrance {
   castle: string;
   marker: string;
   pos: Point;
   /** Angle (radians, around y, 0 = pointing +z) of the arrow. */
   angle: number;
+  dots: Point[];
 }
+
+/** How far an entrance arrow reaches forwards and backwards from its position. */
+export const ARROW_TIP = 0.13;
+export const ARROW_TAIL = 0.065;
 
 export interface Layout {
   /** Board size, margins included. */
@@ -199,12 +207,24 @@ export function buildLayout(board: Board): Layout {
     if (castle) {
       const marker = castle === na ? nb : na;
       const angle = heading(marker.pos, castle.pos);
-      const r = nodeRadius(marker.node) + 0.1;
+      const len = distance(marker.pos, castle.pos);
+      // As close to the castle as it goes, but never back into the marker.
+      const r = Math.max(
+        nodeRadius(marker.node) + ARROW_TAIL + 0.03,
+        len - nodeRadius(castle.node) - ARROW_TIP - 0.05,
+      );
+      const dots = dotsBetween(
+        marker.pos,
+        castle.pos,
+        nodeRadius(marker.node),
+        len - r + ARROW_TAIL,
+      );
       entrances.push({
         castle: castle.id,
         marker: marker.id,
         angle,
         pos: { x: marker.pos.x + Math.sin(angle) * r, z: marker.pos.z + Math.cos(angle) * r },
+        dots,
       });
     } else {
       const dots = dotsBetween(na.pos, nb.pos, nodeRadius(na.node), nodeRadius(nb.node));

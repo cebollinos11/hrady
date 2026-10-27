@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PLAYER_COLOURS } from '../shared/describe';
 import { FACE_VALUES } from './dice';
+import { ARROW_TAIL, ARROW_TIP } from './layout';
 import type { FigureSize } from './figures';
 
 /**
@@ -154,10 +155,10 @@ export function dot(): THREE.Mesh {
 }
 
 const arrowShape = new THREE.Shape([
-  new THREE.Vector2(0, 0.08),
-  new THREE.Vector2(0.06, -0.04),
-  new THREE.Vector2(0, -0.01),
-  new THREE.Vector2(-0.06, -0.04),
+  new THREE.Vector2(0, ARROW_TIP),
+  new THREE.Vector2(0.1, -ARROW_TAIL),
+  new THREE.Vector2(0, -0.015),
+  new THREE.Vector2(-0.1, -ARROW_TAIL),
 ]);
 const arrowGeometry = new THREE.ShapeGeometry(arrowShape).rotateX(-Math.PI / 2);
 
@@ -167,6 +168,11 @@ export function entranceArrow(): THREE.Mesh {
   // ShapeGeometry points along −z after the rotation; turn it to +z.
   g.rotateY(Math.PI);
   const m = new THREE.Mesh(g, MATERIALS.dot);
+  // The same dark edge as the dots.
+  const edge = new THREE.Mesh(g, MATERIALS.dotEdge);
+  edge.scale.setScalar(1.3);
+  edge.position.set(0, -0.004, -0.01);
+  m.add(edge);
   return m;
 }
 

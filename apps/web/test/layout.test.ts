@@ -5,6 +5,8 @@ import {
   START_CLEARANCE,
   WATER_Y,
   buildLayout,
+  ARROW_TAIL,
+  ARROW_TIP,
   clampToBoard,
   distance,
   dotsBetween,
@@ -65,6 +67,22 @@ describe.each(boards)('layout of the %s board', (_, board) => {
       for (const dot of e.dots) {
         expect(distance(dot, a.pos)).toBeGreaterThan(nodeRadius(a.node) - 1e-9);
         expect(distance(dot, b.pos)).toBeGreaterThan(nodeRadius(b.node) - 1e-9);
+      }
+    }
+  });
+
+  it('puts entrance arrows in front of the castle, dotted from the marker', () => {
+    for (const e of layout.entrances) {
+      const m = layout.nodes.get(e.marker)!;
+      const c = layout.nodes.get(e.castle)!;
+      // The arrow never overlaps the marker, and clears the castle when there is room.
+      expect(distance(e.pos, m.pos)).toBeGreaterThan(nodeRadius(m.node) + ARROW_TAIL);
+      const room = distance(m.pos, c.pos) - nodeRadius(m.node) - nodeRadius(c.node);
+      if (room > ARROW_TAIL + ARROW_TIP + 0.1)
+        expect(distance(e.pos, c.pos) - ARROW_TIP).toBeGreaterThan(nodeRadius(c.node));
+      for (const dot of e.dots) {
+        expect(distance(dot, m.pos)).toBeGreaterThan(nodeRadius(m.node));
+        expect(distance(dot, c.pos)).toBeGreaterThan(distance(e.pos, c.pos) + ARROW_TAIL);
       }
     }
   });
