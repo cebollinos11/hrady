@@ -8,6 +8,7 @@ import {
   ARROW_TAIL,
   ARROW_TIP,
   clampToBoard,
+  course,
   distance,
   dotsAlong,
   dotsBetween,
@@ -82,6 +83,18 @@ describe.each(boards)('layout of the %s board', (_, board) => {
         for (const dot of e.dots) expect(distance(dot, n.pos)).toBeGreaterThan(nodeRadius(n.node));
       }
     }
+  });
+
+  it('walks knights along the dotted paths, either way, and straight into castles', () => {
+    for (const e of layout.edges) {
+      expect(course(layout, e.a, e.b)).toBe(e.path);
+      expect(course(layout, e.b, e.a)).toEqual([...e.path].reverse());
+    }
+    for (const e of layout.entrances)
+      expect(course(layout, e.marker, e.castle)).toEqual([
+        layout.nodes.get(e.marker)!.pos,
+        layout.nodes.get(e.castle)!.pos,
+      ]);
   });
 
   it('puts entrance arrows in front of the castle, dotted from the marker', () => {

@@ -8,6 +8,7 @@ import {
   START_SIZE,
   WATER_Y,
   buildLayout,
+  course,
   nodeRadius,
   type Layout,
   type NodeLayout,
@@ -35,6 +36,7 @@ import {
   textTexture,
 } from './models';
 import type { Trail } from './recent';
+import { pathLength, pointAt } from './route';
 import type { Knights } from './steps';
 import { groundColour, heightAt } from './terrain';
 
@@ -536,8 +538,9 @@ export class BoardScene {
   }
 
   /**
-   * `count` knights of `player` walking from one node to another in a hop.
-   * With `back`, they lunge towards the target and return (a castle attack).
+   * `count` knights of `player` walking from one node to another along the
+   * path between them, on the ground. With `back`, they lunge towards the
+   * target and return (a castle attack).
    */
   async travel(
     player: PlayerId,
@@ -550,15 +553,29 @@ export class BoardScene {
     const g = this.figures(player, count, 0.15);
     const a = this.standPoint(from, player);
     const b = this.standPoint(to, player);
-    if (back) b.lerp(a, 0.45);
-    const dir = new THREE.Vector3().subVectors(b, a);
-    g.rotation.y = Math.atan2(dir.x, dir.z);
+    // The path between the node centres, from where they stand to where they will.
+    const way = course(this.layout, from, to).map((p) => ({ ...p }));
+    way[0] = { x: a.x, z: a.z };
+    way[way.length - 1] = { x: b.x, z: b.z };
+    const len = pathLength(way);
+    const end = back ? len * 0.55 : len;
+    const at = (d: number) => {
+      const p = pointAt(way, d);
+      const along = d / (len || 1);
+      // On the ground or the water, and level with the stand points at the ends.
+      const ground = Math.max(heightAt(this.layout, p), WATER_Y);
+      return new THREE.Vector3(p.x, Math.max(ground, a.y + (b.y - a.y) * along), p.z);
+    };
     g.position.copy(a);
     this.effects.add(g);
     await this.tween(duration, (t) => {
       const s = back ? Math.sin(t * Math.PI) : t * t * (3 - 2 * t);
-      g.position.lerpVectors(a, b, s);
-      g.position.y += Math.sin((back ? s : t) * Math.PI) * 0.35;
+      const d = s * end;
+      g.position.copy(at(d));
+      // Facing along the path towards `to`, also while backing off from a lunge.
+      const ahead = pointAt(way, Math.min(len, d + 0.05));
+      const behind = pointAt(way, Math.max(0, d - 0.05));
+      g.rotation.y = Math.atan2(ahead.x - behind.x, ahead.z - behind.z);
     });
     this.effects.remove(g);
   }

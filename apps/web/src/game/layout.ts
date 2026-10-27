@@ -354,6 +354,19 @@ export function buildLayout(board: Board): Layout {
 }
 
 /**
+ * The way a knight walks from node `from` to the neighbouring node `to`,
+ * centre to centre: along the dotted path, curves and all, or straight for a
+ * castle entrance.
+ */
+export function course(layout: Layout, from: string, to: string): Point[] {
+  for (const e of layout.edges) {
+    if (e.a === from && e.b === to) return e.path;
+    if (e.a === to && e.b === from) return [...e.path].reverse();
+  }
+  return [layout.nodes.get(from)!.pos, layout.nodes.get(to)!.pos];
+}
+
+/**
  * Signed distance from a world point to the river bank: negative in the water.
  * The river is the union of capsules along the centreline whose radius is
  * interpolated between its points.
