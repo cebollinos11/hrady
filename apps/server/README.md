@@ -21,6 +21,69 @@ Codes are 5 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (case-insensitive)
 origins that may call the API and open sockets; the web app is served from
 GitHub Pages, so it is cross-origin. Requests from other origins get 403.
 
+## Deploying on the Cloudflare free plan
+
+Everything here fits the Workers Free plan: no card needed, and Durable
+Objects on the free plan are SQLite-backed, which is what `GameRoom` uses.
+
+1. **Account.** Sign up at <https://dash.cloudflare.com/sign-up> (free).
+   Open _Workers & Pages_ once and pick your `workers.dev` subdomain
+   (e.g. `ann` gives `https://hrady.ann.workers.dev`).
+2. **Log in from this repo** (Node 22+, pnpm 10):
+   ```sh
+   pnpm install
+   cd apps/server
+   npx wrangler login        # opens the browser to authorise wrangler
+   npx wrangler whoami       # shows the account it will deploy to
+   ```
+   On a machine without a browser, create an API token instead (_My
+   Profile → API Tokens → Create Token → "Edit Cloudflare Workers"_
+   template) and `export CLOUDFLARE_API_TOKEN=…`.
+3. **Restrict origins (recommended).** In `wrangler.toml` set
+   `ALLOWED_ORIGINS` to where the client runs, e.g.
+   `"https://cebollinos11.github.io,http://localhost:5173"` (no path, no
+   trailing slash). `*` allows any site to use your server.
+4. **Deploy:**
+   ```sh
+   pnpm --filter @hrady/server deploy
+   ```
+   Wrangler bundles the Worker, applies the Durable Object migrations
+   (`v1`, then `v2`: `EchoRoom` → `GameRoom`) and prints the URL, e.g.
+   `https://hrady.<subdomain>.workers.dev`. Check it:
+   ```sh
+   curl https://hrady.<subdomain>.workers.dev/          # "Hrady server is running."
+   curl -X POST https://hrady.<subdomain>.workers.dev/api/rooms \
+     -H 'Content-Type: application/json' -d '{"name":"Test","players":3}'
+   ```
+   (The test room expires after 10 minutes on its own.)
+5. **Point the published client at it.** In the GitHub repository:
+   _Settings → Secrets and variables → Actions → Variables → New repository
+   variable_, name `HRADY_SERVER_URL`, value the Worker URL (no trailing
+   slash). Then re-run the _Pages_ workflow (_Actions → Pages → Run
+   workflow_) or push to `main`; the build passes it to the client as
+   `VITE_SERVER_URL`. The _Online_ button then works on the GitHub Pages
+   site. For a local build against it:
+   `VITE_SERVER_URL=https://hrady.<subdomain>.workers.dev pnpm dev:web`.
+6. **Watching it.** `npx wrangler tail` streams the Worker's logs; the
+   dashboard (_Workers & Pages → hrady_) shows requests, errors and the
+   Durable Object usage.
+
+**Free-plan limits** (per day, reset at 00:00 UTC; see Cloudflare's pricing
+pages for the current numbers): 100,000 Worker requests, Durable Object
+requests and duration allowances, and for SQLite storage about 5 million
+rows read, 100,000 rows written and 5 GB stored. A game costs one HTTP
+request to create the room, one WebSocket per player (each message is a
+Durable Object request; keep-alive pings are answered without waking it),
+and about two row writes per action, so a typical game of 1,000–3,000
+actions writes 2,000–6,000 rows: on the order of twenty full games a day
+before the write limit. Over a limit, requests fail until the next day;
+nothing is charged on the free plan.
+
+**Updating** is the same `deploy` command. A schema change of the stored
+`room` value needs care with rooms in progress; a new Durable Object class
+needs a new `[[migrations]]` entry (`new_sqlite_classes`, never
+`new_classes`, which the free plan rejects).
+
 ## Messages
 
 The message types live in [`packages/protocol`](../../packages/protocol/src/messages.ts),
