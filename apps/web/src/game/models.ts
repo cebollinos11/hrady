@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PLAYER_COLOURS } from '../shared/describe';
 import { FACE_VALUES } from './dice';
 import type { FigureSize } from './figures';
+import { THEME } from './theme';
 
 /**
  * Low-poly models of the board pieces, built from three.js primitives. Every
@@ -21,28 +22,37 @@ const playerMaterials = new Map<string, THREE.MeshStandardMaterial>();
 export function playerMaterial(p: number | null): THREE.MeshStandardMaterial {
   const colour = playerColour(p);
   let m = playerMaterials.get(colour);
-  if (!m) playerMaterials.set(colour, (m = flat(colour, { roughness: 0.6 })));
+  if (!m)
+    playerMaterials.set(
+      colour,
+      (m = flat(colour, {
+        roughness: 0.6,
+        emissive: p === null ? 0x000000 : colour,
+        emissiveIntensity: THEME.glow,
+      })),
+    );
   return m;
 }
 
 export const MATERIALS = {
   metal: flat('#c9ccd2', { metalness: 0.35, roughness: 0.45 }),
-  wood: flat('#7a5230'),
-  stone: flat('#cfc3ad'),
-  darkStone: flat('#9d917c'),
-  rock: flat('#7f776a'),
+  wood: flat(THEME.wood),
+  stone: flat(THEME.stone),
+  darkStone: flat(THEME.darkStone),
+  rock: flat(THEME.rock),
   /** Neutral castle roofs: slate, so they never read as a player's colour. */
-  roof: flat('#5f6670'),
+  roof: flat(THEME.roof),
   /** The red of the coats of arms painted on the start scrolls. */
   crest: flat('#a5442e'),
-  gold: flat('#e2b33c', { metalness: 0.4, roughness: 0.4 }),
-  coinRim: flat('#b9862a', { metalness: 0.3, roughness: 0.5 }),
-  parchment: flat('#efe2c0'),
-  dot: flat('#fbf7ee', { roughness: 1 }),
+  gold: flat(THEME.coinFace, { metalness: 0.4, roughness: 0.4 }),
+  coinRim: flat(THEME.coinRim, { metalness: 0.3, roughness: 0.5 }),
+  parchment: flat(THEME.parchment),
+  dot: flat(THEME.dot, { roughness: 1 }),
+  base: flat(THEME.base ?? '#000000', { roughness: 0.9 }),
   water: new THREE.MeshStandardMaterial({
-    color: '#4f8fc0',
+    color: THEME.water,
     transparent: true,
-    opacity: 0.78,
+    opacity: THEME.waterOpacity,
     roughness: 0.25,
     metalness: 0.1,
   }),
@@ -143,6 +153,7 @@ export function marker(): THREE.Group {
 
 export function dot(): THREE.Mesh {
   const m = new THREE.Mesh(dotGeometry, MATERIALS.dot);
+  m.scale.set(THEME.dotScale, 1, THEME.dotScale);
   m.receiveShadow = true;
   return m;
 }
@@ -161,6 +172,7 @@ export function entranceArrow(): THREE.Mesh {
   // ShapeGeometry points along −z after the rotation; turn it to +z.
   g.rotateY(Math.PI);
   const m = new THREE.Mesh(g, MATERIALS.dot);
+  m.scale.setScalar(THEME.dotScale);
   return m;
 }
 

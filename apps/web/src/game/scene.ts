@@ -37,6 +37,7 @@ import {
 import type { Trail } from './recent';
 import type { Knights } from './steps';
 import { groundColour, heightAt } from './terrain';
+import { THEME } from './theme';
 
 /** Castles are modelled about 0.5 units wide and scaled to fit between markers. */
 const CASTLE_SCALE = 0.78;
@@ -103,7 +104,7 @@ export class BoardScene {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.rig = new CameraRig(canvas, this.layout);
 
-    const sky = new THREE.Color('#a9c9dc');
+    const sky = new THREE.Color(THEME.sky);
     this.scene.background = sky;
     this.scene.fog = new THREE.Fog(sky, 30, 60);
     this.addLights();
@@ -115,8 +116,8 @@ export class BoardScene {
   // --- Static board ---------------------------------------------------------
 
   private addLights() {
-    this.scene.add(new THREE.HemisphereLight(0xfff4dd, 0x3a5a2a, 1.3));
-    const sun = new THREE.DirectionalLight(0xfff6e8, 2.2);
+    this.scene.add(new THREE.HemisphereLight(...THEME.hemi));
+    const sun = new THREE.DirectionalLight(0xfff6e8, THEME.sun);
     sun.position.set(-5, 12, 6);
     sun.castShadow = true;
     const half = Math.max(this.layout.width, this.layout.depth) / 2 + 0.5;
@@ -149,7 +150,7 @@ export class BoardScene {
       const h = (p.getY(i) + p.getY(i + 1) + p.getY(i + 2)) / 3;
       const slope = 1 - n.getY(i);
       const [r, g, b] = groundColour(h, slope * 3);
-      const jitter = 0.97 + ((i * 7919) % 13) / 200;
+      const jitter = 1 + THEME.jitter * (((i * 7919) % 13) / 12 - 0.5);
       for (let k = 0; k < 3; k++) colours.set([r * jitter, g * jitter, b * jitter], (i + k) * 3);
     }
     geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3));
@@ -185,7 +186,7 @@ export class BoardScene {
     }
     const table = new THREE.Mesh(
       new THREE.PlaneGeometry(80, 80).rotateX(-Math.PI / 2),
-      new THREE.MeshStandardMaterial({ color: '#5b4632', roughness: 1 }),
+      new THREE.MeshStandardMaterial({ color: THEME.table, roughness: 1 }),
     );
     table.position.y = -0.6;
     table.receiveShadow = true;
@@ -282,11 +283,23 @@ export class BoardScene {
   private figures(player: PlayerId, count: number, spacing: number, badge = true): THREE.Group {
     const g = new THREE.Group();
     let top = 0;
+    let reach = 0;
     for (const f of arrange(compose(count), spacing)) {
       const k = knightFigure(f.size, player);
       k.position.set(f.x, 0, f.z);
       g.add(k);
       top = Math.max(top, FIGURE_HEIGHT[f.size]);
+      reach = Math.max(reach, Math.hypot(f.x, f.z));
+    }
+    if (THEME.base) {
+      // A dark plinth under the stack so it reads against any ground.
+      const plinth = new THREE.Mesh(
+        new THREE.CylinderGeometry(reach + 0.085, reach + 0.095, 0.02, 20),
+        MATERIALS.base,
+      );
+      plinth.position.y = 0.01;
+      plinth.receiveShadow = true;
+      g.add(plinth);
     }
     if (badge) {
       const b = countBadge(count, player);
