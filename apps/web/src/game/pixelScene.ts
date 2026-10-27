@@ -755,7 +755,7 @@ export class PixelScene implements BoardView {
       const k = grow + (pulse ? blink : 0);
       ring(ctx, a.x, a.y + 1, rx + k, (rx + k) * this.look.squash, colour, thick);
     };
-    for (const id of m.selectable) if (id !== m.selected) mark(id, HIGHLIGHT.selectable, 1);
+    for (const id of m.selectable) if (id !== m.selected) mark(id, HIGHLIGHT.selectable, 1, true);
     if (m.selected) mark(m.selected, HIGHLIGHT.selected, 2, false, 1);
     for (const id of m.moves) mark(id, HIGHLIGHT.move, 2, true);
     for (const id of m.castles) mark(id, HIGHLIGHT.castle, 2, true);

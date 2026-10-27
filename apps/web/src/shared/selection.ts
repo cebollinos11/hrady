@@ -225,7 +225,9 @@ export function click(
           selection: targets.moves.has(node) ? { kind: 'stack', from: node, count } : NONE,
           actions: path,
         };
-      return { selection: pick(options, node) };
+      // Clicking empty ground keeps the stack selected.
+      const next = pick(options, node);
+      return { selection: next.kind === 'none' ? selection : next };
     }
 
     case 'attack': {

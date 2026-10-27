@@ -34,7 +34,6 @@ export function marksFor(sel: Selection, opts: Options): Marks {
   const marks: Marks = {
     ...NO_MARKS,
     selectable: new Set(opts.movable.keys()),
-    fields: new Set(opts.fields.keys()),
     shield: opts.shield,
   };
   if (sel.kind === 'stack') {
