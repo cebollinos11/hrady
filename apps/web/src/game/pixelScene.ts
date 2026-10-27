@@ -254,7 +254,10 @@ export class PixelScene implements BoardView {
     // The overview fills the free space as far as the board's shape allows; the rest is letterbox.
     const [bw, bh] = [b.right - b.left + 12, b.bottom - b.top + 12];
     const zooms = zoomSteps();
-    const overview = snap(Math.max(zooms[0]!, Math.min(zooms.at(-1)!, cssW / bw, cssH / bh)), Math.floor);
+    const overview = snap(
+      Math.max(zooms[0]!, Math.min(zooms.at(-1)!, cssW / bw, cssH / bh)),
+      Math.floor,
+    );
     const at = (zoom: number, x: number, y: number) => ({ zoom, x, y: y - inset / (2 * zoom) });
     const mid = { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 };
     const step = (z: number, n: number) => {

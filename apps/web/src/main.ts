@@ -1513,7 +1513,9 @@ window.addEventListener('keydown', (e) => {
 const TOP_INSET = 56;
 let sized = '';
 function layout() {
-  const dock = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dock-height'));
+  const dock = parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue('--dock-height'),
+  );
   const [w, h] = [window.innerWidth, Math.max(1, window.innerHeight - dock)];
   if (sized === `${w}x${h}`) return;
   sized = `${w}x${h}`;
