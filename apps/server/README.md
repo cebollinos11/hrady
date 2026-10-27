@@ -6,7 +6,7 @@ alarms, no polling).
 
 ```sh
 pnpm dev:server                          # wrangler dev on http://localhost:8787
-pnpm --filter @hrady/server deploy       # after `npx wrangler login`
+pnpm --filter @hrady/server run deploy       # after `npx wrangler login`
 ```
 
 | Route                  | What                                                                    |
@@ -45,7 +45,7 @@ Objects on the free plan are SQLite-backed, which is what `GameRoom` uses.
    trailing slash). `*` allows any site to use your server.
 4. **Deploy:**
    ```sh
-   pnpm --filter @hrady/server deploy
+   pnpm --filter @hrady/server run deploy
    ```
    Wrangler bundles the Worker, applies the Durable Object migrations
    (`v1`, then `v2`: `EchoRoom` → `GameRoom`) and prints the URL, e.g.

@@ -50,7 +50,7 @@ pnpm dev:server & pnpm dev:web     # then open http://localhost:5173 in a few wi
 node apps/web/scripts/online-e2e.mjs   # a whole game in several Playwright browsers
 ```
 
-Deploy the server with `pnpm --filter @hrady/server deploy` after `npx wrangler
+Deploy the server with `pnpm --filter @hrady/server run deploy` after `npx wrangler
 login` (free plan; it prints the `https://hrady.<account>.workers.dev` URL),
 then set the repository variable `HRADY_SERVER_URL` to that URL so the Pages
 build (`VITE_SERVER_URL`) points the published client at it. Without it the
