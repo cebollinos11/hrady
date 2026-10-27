@@ -18,26 +18,43 @@ pnpm typecheck     # tsc in every package
 pnpm test          # Vitest
 
 pnpm dev:web         # 3D client (apps/web); /debug.html is the 2D debug client
-pnpm dev:server      # Worker + Durable Object via wrangler dev (apps/server)
+pnpm dev:server      # game server: Worker + Durable Object via wrangler dev (apps/server)
 pnpm dev:map-editor  # board tracing tool (tools/map-editor)
 pnpm tournament --lineup heuristic,random,random --games 100  # bot-vs-bot (packages/ai)
 ```
 
-| Path               | What                                                     |
-| ------------------ | -------------------------------------------------------- |
-| `packages/board`   | board graph (`hrady.json`), types, loader, validation    |
-| `packages/engine`  | pure, deterministic rules engine                         |
-| `packages/ai`      | bots (random, heuristic, Monte-Carlo) and tournaments    |
-| `apps/web`         | three.js game client, 2D debug client (`debug.html`)     |
-| `apps/server`      | Cloudflare Worker + SQLite-backed Durable Object         |
-| `tools/map-editor` | click-to-trace editor over the board photo (not shipped) |
+| Path                | What                                                        |
+| ------------------- | ----------------------------------------------------------- |
+| `packages/board`    | board graph (`hrady.json`), types, loader, validation       |
+| `packages/engine`   | pure, deterministic rules engine                            |
+| `packages/ai`       | bots (random, heuristic, Monte-Carlo) and tournaments       |
+| `packages/protocol` | client/server messages for online play and validation       |
+| `apps/web`          | three.js game client, 2D debug client (`debug.html`)        |
+| `apps/server`       | online rooms: Cloudflare Worker + `GameRoom` Durable Object |
+| `tools/map-editor`  | click-to-trace editor over the board photo (not shipped)    |
 
 Every push to `main` builds `apps/web` and publishes it on GitHub Pages
 (`.github/workflows/pages.yml`): the 3D game at the root, the 2D debug client
 at `debug.html`.
 
-The server echoes WebSocket messages at `/ws/<room>` for now. Deploy with
-`pnpm --filter @hrady/server deploy` after `npx wrangler login`.
+### Online play
+
+_Online_ in the 3D client creates a room (3–5 players) or joins one by code;
+the host adds Easy/Medium/Hard bots, which run in the host's browser. The
+server ([`apps/server`](apps/server/README.md)) is authoritative and sends
+each player only their own view. With both dev servers running, the client
+finds the local server at port 8787 by itself:
+
+```sh
+pnpm dev:server & pnpm dev:web     # then open http://localhost:5173 in a few windows
+node apps/web/scripts/online-e2e.mjs   # a whole game in several Playwright browsers
+```
+
+Deploy the server with `pnpm --filter @hrady/server deploy` after `npx wrangler
+login` (free plan; it prints the `https://hrady.<account>.workers.dev` URL),
+then set the repository variable `HRADY_SERVER_URL` to that URL so the Pages
+build (`VITE_SERVER_URL`) points the published client at it. Without it the
+published client plays locally only.
 
 ## Contents
 

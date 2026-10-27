@@ -70,6 +70,51 @@ board photo is never used or shipped by the 3D client.
 - **Layout**: a side panel on desktop, a bottom sheet under 760 px; the 3D
   view takes the rest of the window.
 
+### Online play
+
+_Online_ (top bar) opens the online dialog: a name, then _Create room_
+(3–5 players) or _Join_ with a room code. An invite link is the page with
+`?room=CODE`; opening it joins the room (asking for a name the first time).
+The room stays in the address bar, so a refresh comes back to it.
+
+- **Lobby**: the seats in their colours; anyone may _Sit here_ on an open
+  seat or _Watch instead_. The host (the creator, or whoever took over) sets
+  each free seat to Open or an Easy/Medium/Hard bot, the number of players,
+  the turn timer, and starts the game once every seat is taken. People who
+  join a running game watch it as spectators (`viewFor(state, null)`).
+- **Playing** looks and works like a local game: the same board,
+  animations, log, trails and selection UX, driven by the server. Clicks
+  send intents (`act { action, at }`); the board changes when the server's
+  `action` message comes back with the events (animated as usual) and this
+  seat's new view. `online/mirror.ts` turns that view into a stand-in
+  `GameState` (hidden values as 0, no RNG) so the local code for legal
+  targets, selection and scoring runs unchanged; nothing hidden is in it.
+- **Undo** online takes back your own moves since your last roll, battle or
+  shield (or a move a bot made for you); the server checks it and everyone's
+  board snaps back.
+- **Bots**: the host's tab is the AI host. When a bot seat is to move, the
+  server sends it the seat's observation (`duty`); the tab runs the bot in
+  the same Web Worker as local games and sends its action after the
+  animations and the ⚙ bot delay. If the host leaves, another seated player
+  takes over within moments.
+- **Turn timer**: the status line shows the time left (⏱) when a timer runs.
+  When it runs out, or 30 s after a player on turn lost their connection, a
+  medium bot plays for them; the panel then offers _I'm back_ (returning or
+  playing a move also ends it).
+- **Leaving**: _Leave room_ goes back to the local game, which is kept
+  meanwhile. A seated player who leaves a running game keeps their seat
+  (a bot plays) and can come back with the link; reconnect tokens are kept
+  per room in `localStorage` (`hrady-online`).
+- **Server URL**: `VITE_SERVER_URL` at build time; the dev server uses
+  `http://<host>:8787` (`wrangler dev`) by default. The Pages build reads it
+  from the repository variable `HRADY_SERVER_URL`.
+
+`scripts/online-e2e.mjs` checks all of this in several Playwright browsers
+against `pnpm dev:server` and `pnpm dev:web`: a 5-seat game with three humans
+and two bots, a refresh, the host leaving (hand-off and bot takeover) and
+coming back, and a late spectator, checking every WebSocket frame for hidden
+shield values.
+
 ### What is on the board
 
 - **Terrain** (`terrain.ts`): value-noise hills, flattened around every node
@@ -135,8 +180,11 @@ running animations; ⚙ _Animations_ makes them faster or turns them off.
   ignored, like the knight supply.
 - **Shield token visibility** follows `viewFor`: the viewer's own face-down
   values show as "(n)", everyone else's as "?".
-- **Seats are fixed per game** in the 3D client (chosen in _New game_); the
-  debug client still allows switching them mid-game.
+- **Seats are fixed per game** in the 3D client (chosen in _New game_, or in
+  the online lobby); the debug client still allows switching them mid-game.
+- **Online games reuse the local game flow**: a mirrored session from the
+  server's views rather than a second client, so both modes share every
+  rendering and selection path. _Pass screen_ does not apply online.
 - **Pass screen** also covers the very first turn when two or more humans
   play, so the first player confirms they are at the screen.
 - **Undo** is only offered on a human's turn, back to the roll or the last
@@ -158,6 +206,7 @@ running animations; ⚙ _Animations_ makes them faster or turns them off.
 | `src/game/saved.ts`                            | save/resume and settings in `localStorage`                   |
 | `src/game/scene.ts`, `models.ts`, `camera.ts`  | three.js scene, low-poly models, camera rig and presets      |
 | `src/game/animator.ts`, `dieView.ts`, `hud.ts` | animation player, die canvas, HUD DOM helpers                |
+| `src/online/`                                  | online mode: connection, lobby, view mirror, tokens          |
 | `src/shared/`                                  | shared with the debug client: session, selection, seats, log |
 |                                                | text, highlight marks, the bot worker and its client         |
 

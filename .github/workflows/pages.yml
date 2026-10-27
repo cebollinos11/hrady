@@ -28,6 +28,9 @@ jobs:
       - run: pnpm --filter @hrady/web build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
+          # The deployed game server (e.g. https://hrady.<account>.workers.dev);
+          # without it the published client offers local play only.
+          VITE_SERVER_URL: ${{ vars.HRADY_SERVER_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/web/dist

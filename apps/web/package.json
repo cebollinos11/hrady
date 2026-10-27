@@ -13,6 +13,7 @@
     "@hrady/ai": "workspace:*",
     "@hrady/board": "workspace:*",
     "@hrady/engine": "workspace:*",
+    "@hrady/protocol": "workspace:*",
     "three": "^0.186.1"
   },
   "devDependencies": {

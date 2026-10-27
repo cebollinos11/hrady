@@ -58,7 +58,8 @@ hrady/
 ├─ packages/
 │  ├─ engine/      pure TS rules engine — no DOM, no I/O, deterministic
 │  ├─ board/       board graph JSON + types + validation
-│  └─ ai/          bots (runs in Web Worker or Node)
+│  ├─ ai/          bots (runs in Web Worker or Node)
+│  └─ protocol/    online messages shared by client and server
 ├─ apps/
 │  ├─ web/         Vite + TypeScript + three.js client
 │  └─ server/      Cloudflare Worker + Durable Object (GameRoom)
@@ -153,7 +154,20 @@ spectators, AI-host hand-off, turn timer + AFK→bot takeover, room expiry via a
 Stay within free-tier limits (100k requests/day, small messages, no
 polling).
 **Done when:** 3–5 browsers play a full game with AI seats mixed in, survive
-refreshes/disconnects.
+refreshes/disconnects. *(Implemented in [`apps/server`](../apps/server/README.md)
+with the shared [`packages/protocol`](../packages/protocol/src/messages.ts) and
+the _Online_ mode of [`apps/web`](../apps/web/README.md#online-play). Notes:
+the room logic is pure functions (`room.ts`) under a thin Durable Object;
+the game is stored as config, seed and an action log plus a state snapshot;
+bots for AI seats and for players who are away run in the host's browser,
+which is handed to another seated human when the host leaves; a bot playing
+for an absent human never sees that human's hidden shields; the turn timer
+(off/1/2/5 min, default 2) and a 30 s disconnect grace hand a seat to the
+bot until its player is back; undo online covers the player's own moves
+since the last irreversible action, checked by the server. Unit tests drive
+the room logic with fake browsers and check every message for leaks, a
+Miniflare test runs the Worker, and `apps/web/scripts/online-e2e.mjs` plays a
+5-seat game in Playwright browsers against `wrangler dev`.)*
 
 ### Stage 7 — Polish
 Sounds, animations for battles/reveals, tutorial/rules overlay, i18n

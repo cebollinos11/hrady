@@ -55,6 +55,14 @@ export function counter(
   );
 }
 
+/** How the HUD names who plays a seat. */
+export interface SeatLabel {
+  /** In the players table: "you", "medium bot", a player's name… */
+  short: string;
+  /** In the status line, or `null` to leave it out (a person at this screen). */
+  long: string | null;
+}
+
 const SEAT_SHORT: Record<Seat, string> = {
   human: 'you',
   easy: 'easy bot',
@@ -62,16 +70,20 @@ const SEAT_SHORT: Record<Seat, string> = {
   hard: 'hard bot',
 };
 
+/** Labels for a local game's seats. */
+export const localLabels = (seats: readonly Seat[]): SeatLabel[] =>
+  seats.map((s) => ({ short: SEAT_SHORT[s], long: s === 'human' ? null : SEAT_NAMES[s] }));
+
 /** Turn, phase and movement points of the shown state. */
-export function statusView(view: GameView, seats: readonly Seat[]): Node[] {
+export function statusView(view: GameView, labels: readonly SeatLabel[], clock = ''): Node[] {
   const p = view.current;
   const who = h('h2', {}, swatch(p), ` ${playerName(p)}`);
   if (view.phase === 'over') return [h('h2', {}, 'Game over'), h('p', {}, `Turn ${view.turn}`)];
-  const seat = seats[p] ?? 'human';
+  const long = labels[p]?.long;
   const phase = view.phase === 'roll' ? 'to roll' : `rolled ${view.roll} · ${view.mp} MP left`;
   const out: Node[] = [
     who,
-    h('p', {}, `Turn ${view.turn} · ${seat === 'human' ? '' : `${SEAT_NAMES[seat]} · `}${phase}`),
+    h('p', {}, `Turn ${view.turn} · ${long ? `${long} · ` : ''}${phase}${clock && ` · ${clock}`}`),
   ];
   if (view.phase === 'move')
     out.push(
@@ -98,7 +110,11 @@ function shieldCell(view: GameView, player: PlayerId): (Node | string)[] {
 }
 
 /** Points, knights on the board and shields per player. */
-export function playersTable(state: GameState, view: GameView, seats: readonly Seat[]): Node[] {
+export function playersTable(
+  state: GameState,
+  view: GameView,
+  labels: readonly SeatLabel[],
+): Node[] {
   const { points, knights, winners } = score(state);
   const over = state.phase === 'over';
   const head = h(
@@ -118,7 +134,7 @@ export function playersTable(state: GameState, view: GameView, seats: readonly S
         {},
         swatch(p),
         ` ${playerName(p)}${over && winners.includes(p) ? ' ★' : ''} `,
-        h('span', { className: 'seat' }, SEAT_SHORT[seats[p] ?? 'human']),
+        h('span', { className: 'seat' }, labels[p]?.short ?? ''),
       ),
       h('td', {}, String(pts)),
       h('td', {}, String(knights[p] ?? 0)),

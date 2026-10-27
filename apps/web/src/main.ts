@@ -1,15 +1,33 @@
 import {
   boardContext,
+  legalActions,
   score,
   validateAction,
   viewFor,
   type Action,
   type GameState,
+  type GameView,
   type PlayerId,
 } from '@hrady/engine';
 import { Animator } from './game/animator';
 import { DieView } from './game/dieView';
-import { button, counter, describeNode, h, playersTable, statusView, swatch } from './game/hud';
+import {
+  button,
+  counter,
+  describeNode,
+  h,
+  localLabels,
+  playersTable,
+  statusView,
+  swatch,
+} from './game/hud';
+import {
+  normaliseCode,
+  type Duty,
+  type LogEntry,
+  type RoomInfo,
+  type ServerMessage,
+} from '@hrady/protocol';
 import {
   ANIMATION_SPEED,
   BOT_DELAY,
@@ -48,6 +66,12 @@ import {
   type Selection,
 } from './shared/selection';
 import { act, canUndo, newSession, truncate, undo, undoTurn, type Session } from './shared/session';
+import { serverUrl, socketUrl } from './online/config';
+import { Connection, createRoom, roomExists, type ConnectionStatus } from './online/connection';
+import { renderLobby, type LobbyHandlers, type LobbyScreen } from './online/lobby';
+import { fromSnapshot, mirror, onlineFloor, stateFromView } from './online/mirror';
+import { clockText, onlineLabels, seatOf } from './online/room';
+import { forgetToken, loadOnline, rememberToken, saveOnline } from './online/store';
 
 // The 2D debug client stays reachable: index.html?debug opens it.
 if (new URLSearchParams(location.search).has('debug')) location.replace('debug.html');
@@ -73,6 +97,35 @@ let gameOverSeen = session.state.phase === 'over';
 /** The last multi-step walk, taken back as a whole by Undo while it is the latest action. */
 let lastWalk: { end: number; size: number } | null = null;
 
+/**
+ * An online room, while this tab is in one. The board then shows `session`
+ * as a mirror of the server's game (`online/mirror.ts`): the server applies
+ * every action and sends this seat's view and the events back.
+ */
+interface Online {
+  code: string;
+  conn: Connection;
+  /** This tab's member id, once welcomed. */
+  me: string | null;
+  room: RoomInfo | null;
+  /** The server's log, with the `auto` flags undo needs. */
+  log: LogEntry[];
+  /** A game snapshot has arrived (the lobby is over). */
+  inGame: boolean;
+  /** Actions or undos sent and not answered yet. */
+  pending: number;
+  /** Selection to restore once the pending actions are back (a walk keeps its stack selected). */
+  after: Selection | null;
+  /** Bot seat this tab plays as AI host. */
+  duty: Duty | null;
+  /** `performance.now()` when a bot takes over the player to move. */
+  deadline: number | null;
+}
+
+let online: Online | null = null;
+const server = serverUrl(import.meta.env, location.hostname);
+let onlineStore = loadOnline(localStorage);
+
 function randomSeed() {
   return Math.floor(Math.random() * 2 ** 31);
 }
@@ -84,14 +137,33 @@ const animator = new Animator(scene, die);
 animator.onIdle = () => render();
 const bots = new BotClient();
 
-const botTurn = () => isBotTurn(session.state, seats);
-const viewer = () => viewerFor(session.state, seats);
+/** This tab's seat online, `null` when watching. */
+const mySeat = () => (online ? seatOf(online.room, online.me) : null);
+/** A bot plays this tab's seat because its human was idle or away. */
+function amAway() {
+  const seat = mySeat();
+  const info = seat === null ? undefined : online?.room?.seats[seat];
+  return info?.type === 'human' && info.away;
+}
+/** Nobody at this screen is to move: a bot's turn locally, anyone else's online. */
+function botTurn() {
+  if (!online) return isBotTurn(session.state, seats);
+  return !online.inGame || mySeat() !== session.state.current || amAway();
+}
+const viewer = () => (online ? mySeat() : viewerFor(session.state, seats));
 /** Clicks and keys go to the game only on a human's turn with nothing in the way. */
 const interactive = () =>
-  !botTurn() && curtain === null && session.state.phase !== 'over' && $('#setup').hidden;
+  !botTurn() &&
+  curtain === null &&
+  session.state.phase !== 'over' &&
+  $('#setup').hidden &&
+  $('#online').hidden &&
+  !online?.pending;
+const labels = () => (online?.room ? onlineLabels(online.room, online.me) : localLabels(seats));
 
 function persist() {
-  saveGame(localStorage, { session, seats });
+  // The local game is kept while a tab plays online.
+  if (!online) saveGame(localStorage, { session, seats });
   save(localStorage, SETTINGS_KEY, settings);
 }
 
@@ -113,6 +185,7 @@ function snap() {
 function passScreen(before: PlayerId | null) {
   const now = viewer();
   if (
+    !online &&
     now !== null &&
     now !== before &&
     settings.passScreen &&
@@ -122,6 +195,7 @@ function passScreen(before: PlayerId | null) {
 }
 
 function perform(action: Action): boolean {
+  if (online) return sendAction(online, action);
   let next: Session;
   try {
     next = act(session, action);
@@ -129,6 +203,12 @@ function perform(action: Action): boolean {
     toast(e instanceof Error ? e.message : String(e));
     return false;
   }
+  advance(next);
+  return true;
+}
+
+/** Shows the session after one more action: animates its events, then settles the board. */
+function advance(next: Session) {
   const before = viewer();
   const entry = next.log.at(-1)!;
   const prev = queued;
@@ -152,7 +232,6 @@ function perform(action: Action): boolean {
     },
   });
   render();
-  return true;
 }
 
 /**
@@ -160,13 +239,15 @@ function perform(action: Action): boolean {
  * selects `after` if it can still act.
  */
 function play(actions: readonly Action[], after: Selection = NONE) {
-  const start = session.record.actions.length;
+  const start = session.record.actions.length + (online?.pending ?? 0);
   for (const action of actions) if (!perform(action)) return;
   lastWalk =
     actions.length > 1 && actions.every((a) => a.type === 'move')
       ? { end: start + actions.length, size: actions.length }
       : null;
-  select(carryOver(after, options));
+  // Online the selection comes back once the server has confirmed the actions.
+  if (online) online.after = after;
+  else select(carryOver(after, options));
 }
 
 /** Takes back the last move, or the whole last walk if it was made in one click. */
@@ -174,8 +255,16 @@ function undoLast() {
   const length = session.record.actions.length;
   const walk = lastWalk;
   lastWalk = null;
-  setSession(walk?.end === length ? truncate(session, length - walk.size) : undo(session));
+  if (online) requestUndo(online, walk?.end === length ? length - walk.size : length - 1);
+  else setSession(walk?.end === length ? truncate(session, length - walk.size) : undo(session));
 }
+
+function undoAll() {
+  if (online) requestUndo(online, onlineFloor(online.log));
+  else setSession(undoTurn(session));
+}
+
+const undoable = () => (online ? onlineFloor(online.log) < online.log.length : canUndo(session));
 
 function setSession(next: Session) {
   const before = viewer();
@@ -206,6 +295,7 @@ function onNodeClick(id: string) {
 }
 
 function startGame(players: number, newSeats: Seat[], seed: number) {
+  if (online) return;
   bots.cancel();
   seats = newSeats;
   curtain = null;
@@ -227,7 +317,7 @@ let botRequest: number | null = null;
 
 /** Asks the bot to move when it is a bot's turn; its action waits for the animations and a delay. */
 function scheduleBot() {
-  if (!botTurn() || curtain !== null || botRequest !== null) return;
+  if (online || !botTurn() || curtain !== null || botRequest !== null) return;
   const player = session.state.current;
   const length = session.record.actions.length;
   botRequest = length;
@@ -258,6 +348,7 @@ function scheduleBot() {
 
 /** Forgets a bot request whose game has moved on (undo, new game, seat change). */
 function dropBotRequest() {
+  if (online) return;
   if (botRequest !== null && botRequest !== session.record.actions.length) {
     bots.cancel();
     botRequest = null;
@@ -286,27 +377,45 @@ function renderControls() {
     const { winners } = score(state);
     controls.replaceChildren(
       h('p', { className: 'offer' }, `${winners.map(playerName).join(' and ')} won.`),
-      h('div', { className: 'row' }, button('New game', openSetup, { className: 'primary' })),
+      h(
+        'div',
+        { className: 'row' },
+        online
+          ? button('Leave room', () => leaveOnline(), { className: 'primary' })
+          : button('New game', openSetup, { className: 'primary' }),
+      ),
     );
     return;
   }
-  if (botTurn() || animator.busy) {
+  const away: Node[] = online && amAway() ? [awayNotice()] : [];
+  if (botTurn() || animator.busy || online?.pending) {
     const p = state.current;
-    const text = botTurn()
-      ? curtain !== null
-        ? 'waits for the screen to be shown.'
-        : bots.thinking
-          ? 'is thinking…'
-          : 'is moving…'
-      : 'is moving…';
-    controls.replaceChildren(
-      h(
-        'p',
-        { className: 'hint' },
-        swatch(p),
-        ` ${playerName(p)} (${SEAT_NAMES[seats[p] ?? 'human']}) ${text}`,
-      ),
-    );
+    let text: string;
+    if (online) {
+      const seat = online.room?.seats[p];
+      const who = `${playerName(p)} (${labels()[p]?.long ?? 'you'})`;
+      const watching = online.inGame && mySeat() === null ? ' You are watching.' : '';
+      text = !online.inGame
+        ? 'Waiting for the game to start.'
+        : animator.busy
+          ? `${who} is moving…`
+          : online.pending
+            ? 'Waiting for the server…'
+            : seat?.type === 'bot' || (seat?.type === 'human' && seat.away)
+              ? `${who} is thinking…`
+              : `${who} is playing.`;
+      text += watching;
+    } else {
+      const status = botTurn()
+        ? curtain !== null
+          ? 'waits for the screen to be shown.'
+          : bots.thinking
+            ? 'is thinking…'
+            : 'is moving…'
+        : 'is moving…';
+      text = `${playerName(p)} (${SEAT_NAMES[seats[p] ?? 'human']}) ${status}`;
+    }
+    controls.replaceChildren(...away, h('p', { className: 'hint' }, swatch(p), ` ${text}`));
     return;
   }
   const player = state.current;
@@ -328,11 +437,11 @@ function renderControls() {
         'div',
         { className: 'row' },
         button('Undo (Z)', undoLast, {
-          disabled: !canUndo(session),
+          disabled: !undoable(),
           title: 'Take back the last move',
         }),
-        button('Undo turn', () => setSession(undoTurn(session)), {
-          disabled: !canUndo(session),
+        button('Undo turn', undoAll, {
+          disabled: !undoable(),
           title: 'Take back every move since the roll, the last battle or shield',
         }),
       ),
@@ -499,12 +608,26 @@ function renderLog() {
   log.scrollTop = log.scrollHeight;
 }
 
+/** The turn timer, online, while it runs for the player to move. */
+const clock = () =>
+  online?.deadline != null && online.inGame && shown.phase !== 'over'
+    ? `⏱ ${clockText(online.deadline - performance.now())}`
+    : '';
+
+function renderStatus() {
+  $('#status').replaceChildren(...statusView(viewFor(shown, viewer()), labels(), clock()));
+}
+
 function render() {
   const view = viewFor(shown, viewer());
-  $('#status').replaceChildren(...statusView(view, seats));
+  renderStatus();
   renderControls();
   renderSelection();
-  $('#players').replaceChildren(...playersTable(shown, view, seats));
+  $('#players').replaceChildren(...playersTable(shown, view, labels()));
+  $('#new-game').textContent = online ? 'Leave room' : 'New game';
+  $('#online-button').hidden = online !== null;
+  $('#room-chip').hidden = online === null;
+  if (online) $('#room-chip').textContent = `Room ${online.code}`;
   renderLog();
   renderTrails();
   greet();
@@ -528,8 +651,9 @@ function showGameOver() {
   $('#game-over-title').textContent =
     `${winners.map(playerName).join(' and ')} win${winners.length === 1 ? 's' : ''}!`;
   $('#game-over-scores').replaceChildren(
-    ...playersTable(session.state, viewFor(session.state, null), seats),
+    ...playersTable(session.state, viewFor(session.state, null), labels()),
   );
+  $('#game-over-new').textContent = online ? 'Leave room' : 'New game';
   $('#game-over').hidden = false;
 }
 
@@ -581,8 +705,8 @@ $<HTMLFormElement>('#setup-form').addEventListener('submit', (e) => {
   $('#setup').hidden = true;
   startGame(players, setupSeats.slice(0, players), seed);
 });
-$('#new-game').addEventListener('click', openSetup);
-$('#game-over-new').addEventListener('click', openSetup);
+$('#new-game').addEventListener('click', () => (online ? leaveOnline() : openSetup()));
+$('#game-over-new').addEventListener('click', () => (online ? leaveOnline() : openSetup()));
 $('#game-over-close').addEventListener('click', () => ($('#game-over').hidden = true));
 $('#log-toggle').addEventListener('click', () => {
   const collapsed = $('#log-box').classList.toggle('collapsed');
@@ -593,6 +717,357 @@ $('#reveal').addEventListener('click', () => {
   curtain = null;
   render();
 });
+
+// --- Online ----------------------------------------------------------------------
+
+function sendAction(o: Online, action: Action): boolean {
+  if (!o.conn.send({ type: 'act', action, at: session.log.length + o.pending })) {
+    toast('Not connected to the server; reconnecting…');
+    return false;
+  }
+  o.pending++;
+  selection = NONE;
+  render();
+  return true;
+}
+
+/** Asks the server to take the game back to its first `to` actions (own moves only). */
+function requestUndo(o: Online, to: number) {
+  const length = o.log.length;
+  const target = Math.max(to, onlineFloor(o.log));
+  if (o.pending || target >= length) return;
+  if (o.conn.send({ type: 'undo', to: target, at: length })) {
+    o.pending++;
+    render();
+  }
+}
+
+function awayNotice(): Node {
+  return h(
+    'p',
+    { className: 'offer away' },
+    'A bot is playing for you. ',
+    button("I'm back", () => online?.conn.send({ type: 'back' }), { className: 'primary' }),
+  );
+}
+
+let lobbyScreen: LobbyScreen | null = null;
+
+/** Shows the online dialog (`null` hides it). */
+function showLobby(screen: LobbyScreen | null) {
+  lobbyScreen = screen;
+  $('#online').hidden = screen === null;
+  if (screen) renderLobby($('#online-dialog'), screen, lobbyHandlers);
+  render();
+}
+
+function entryScreen(change: Partial<Extract<LobbyScreen, { kind: 'entry' }>> = {}): LobbyScreen {
+  const current = lobbyScreen?.kind === 'entry' ? lobbyScreen : null;
+  return {
+    kind: 'entry',
+    name: current?.name ?? onlineStore.name,
+    code: current?.code ?? '',
+    players: current?.players ?? 3,
+    error: null,
+    busy: false,
+    configured: server !== null,
+    ...change,
+  };
+}
+
+function rememberName(name: string) {
+  onlineStore = { ...onlineStore, name };
+  saveOnline(localStorage, onlineStore);
+}
+
+const lobbyHandlers: LobbyHandlers = {
+  async create(name, players) {
+    if (!server) return;
+    rememberName(name);
+    showLobby(entryScreen({ name, players, busy: true }));
+    try {
+      const { code, token } = await createRoom(server, name, players);
+      onlineStore = rememberToken(onlineStore, code, token);
+      saveOnline(localStorage, onlineStore);
+      connectOnline(code);
+    } catch (e) {
+      showLobby(
+        entryScreen({
+          name,
+          players,
+          error: `Could not create a room: ${e instanceof Error ? e.message : String(e)}`,
+        }),
+      );
+    }
+  },
+  join(name, text) {
+    const code = normaliseCode(text);
+    rememberName(name);
+    if (!code) showLobby(entryScreen({ name, code: text, error: 'That is not a room code.' }));
+    else connectOnline(code);
+  },
+  send: (msg) => online?.conn.send(msg),
+  leave: () => leaveOnline(),
+  cancel: () => showLobby(null),
+  copyLink,
+};
+
+const inviteLink = (code: string) =>
+  `${location.origin}${location.pathname}?room=${encodeURIComponent(code)}`;
+
+function copyLink() {
+  if (!online) return;
+  const link = inviteLink(online.code);
+  navigator.clipboard?.writeText(link).then(
+    () => toast(`Invite link copied: ${link}`, 4000, true),
+    () => toast(link, 8000, true),
+  );
+}
+
+/** Puts the room in the address bar, so a refresh comes back to it. */
+function setRoomUrl(code: string | null) {
+  const url = new URL(location.href);
+  if (code) url.searchParams.set('room', code);
+  else url.searchParams.delete('room');
+  history.replaceState(null, '', url);
+}
+
+/** Joins a room (with the stored token, if this browser was in it before). */
+function connectOnline(code: string) {
+  if (!server) return;
+  if (online) closeOnline();
+  bots.cancel();
+  botRequest = null;
+  const conn = new Connection(
+    socketUrl(server, code),
+    () => {
+      const token = onlineStore.tokens[code];
+      const name = onlineStore.name || 'Player';
+      return token ? { type: 'hello', name, token } : { type: 'hello', name };
+    },
+    () => roomExists(server, code),
+  );
+  online = {
+    code,
+    conn,
+    me: null,
+    room: null,
+    log: [],
+    inGame: false,
+    pending: 0,
+    after: null,
+    duty: null,
+    deadline: null,
+  };
+  const o = online;
+  conn.onMessage = (msg) => online === o && onServer(o, msg);
+  conn.onStatus = (status) => online === o && onStatus(o, status);
+  setRoomUrl(code);
+  gameOverSeen = true;
+  $('#game-over').hidden = true;
+  $('#setup').hidden = true;
+  // An empty board until the game starts.
+  setSession(newSession({ players: 3 }, 0));
+  showLobby({ kind: 'connecting', code, text: 'Connecting…' });
+}
+
+function onStatus(o: Online, status: ConnectionStatus) {
+  if (status === 'gone') {
+    const code = o.code;
+    onlineStore = forgetToken(onlineStore, code);
+    saveOnline(localStorage, onlineStore);
+    leaveOnline(false);
+    showLobby(entryScreen({ code, error: `Room ${code} does not exist (any more).` }));
+    return;
+  }
+  if (status === 'connecting') {
+    o.pending = 0;
+    o.after = null;
+    if (!o.inGame && lobbyScreen?.kind !== 'room')
+      showLobby({ kind: 'connecting', code: o.code, text: 'Connecting…' });
+    else if (lobbyScreen?.kind === 'room') showLobby({ ...lobbyScreen, status });
+    else toast('Connection lost; reconnecting…', 3000);
+  }
+  render();
+}
+
+function setRoom(o: Online, room: RoomInfo) {
+  o.room = room;
+  o.deadline = room.deadlineIn === null ? null : performance.now() + room.deadlineIn;
+}
+
+function onServer(o: Online, msg: ServerMessage) {
+  switch (msg.type) {
+    case 'welcome':
+      o.me = msg.you.id;
+      onlineStore = rememberToken(onlineStore, o.code, msg.you.token);
+      saveOnline(localStorage, onlineStore);
+      setRoom(o, msg.room);
+      o.pending = 0;
+      o.after = null;
+      runDuty(o, null); // the server sends the duty again if this tab is the AI host
+      if (msg.game) loadSnapshot(o, msg.game);
+      else {
+        o.inGame = false;
+        showLobby({ kind: 'room', room: msg.room, me: o.me, status: o.conn.status });
+      }
+      break;
+    case 'room':
+      setRoom(o, msg.room);
+      if (msg.room.phase === 'lobby')
+        showLobby({ kind: 'room', room: msg.room, me: o.me, status: o.conn.status });
+      else render();
+      break;
+    case 'game':
+      loadSnapshot(o, msg.game);
+      scene.rig.go('overview');
+      break;
+    case 'action':
+      applyRemote(o, msg.at, msg.entry, msg.view);
+      break;
+    case 'undone':
+      o.log.length = msg.length;
+      o.pending = 0;
+      o.after = null;
+      lastWalk = null;
+      setSession(mirror(msg.view, o.log));
+      break;
+    case 'duty':
+      runDuty(o, msg.duty);
+      break;
+    case 'error':
+      if (o.pending) {
+        o.pending = 0;
+        o.after = null;
+      }
+      if (msg.code !== 'stale') toast(msg.message);
+      render();
+      break;
+    case 'closed':
+      toast(msg.reason, 6000, true);
+      break;
+  }
+}
+
+function loadSnapshot(o: Online, game: { view: GameView; log: LogEntry[] }) {
+  o.log = [...game.log];
+  o.inGame = true;
+  o.pending = 0;
+  o.after = null;
+  lastWalk = null;
+  gameOverSeen = game.view.phase === 'over';
+  showLobby(null);
+  setSession(fromSnapshot(game));
+}
+
+/** One more action from the server: animate it like a local one. */
+function applyRemote(o: Online, at: number, entry: LogEntry, view: GameView) {
+  if (at !== o.log.length) {
+    // Out of step (should not happen): a fresh welcome brings the whole game.
+    o.conn.resync();
+    return;
+  }
+  o.log.push(entry);
+  const { action, events } = entry;
+  advance({
+    record: { ...session.record, actions: [...session.record.actions, action] },
+    state: stateFromView(view),
+    log: [...session.log, { action, events }],
+  });
+  if (o.pending && !entry.auto && action.player === mySeat()) {
+    o.pending--;
+    if (!o.pending && o.after) {
+      const after = o.after;
+      o.after = null;
+      select(carryOver(after, options));
+    }
+  }
+}
+
+/** Seed of the bot a seat gets in this room, so it keeps its plan across requests. */
+function botSeed(code: string, seat: PlayerId) {
+  let hash = seat;
+  for (const c of code) hash = (Math.imul(hash, 31) + c.charCodeAt(0)) >>> 0;
+  return hash;
+}
+
+let dutyRun = 0;
+
+/**
+ * As AI host this tab plays the seats the server asks for: the bot gets the
+ * observation from the server, and its action waits for the animations and
+ * the bot delay, like a local bot's.
+ */
+function runDuty(o: Online, duty: Duty | null) {
+  o.duty = duty;
+  const run = ++dutyRun;
+  bots.cancel();
+  if (!duty) return;
+  const asked = performance.now();
+  bots
+    .request(duty.seat, duty.level, botSeed(o.code, duty.seat), duty.obs)
+    .then(async (action) => {
+      await animator.whenIdle();
+      const wait = BOT_DELAY[settings.botSpeed] - (performance.now() - asked);
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      await animator.whenIdle();
+      if (run !== dutyRun || online !== o || !action) return;
+      o.duty = null;
+      o.conn.send({ type: 'act', action, at: duty.at });
+    })
+    .catch((err: unknown) =>
+      toast(`Bot error: ${err instanceof Error ? err.message : String(err)}`),
+    );
+}
+
+/** Closes the room's socket and stops playing bots for it. */
+function closeOnline() {
+  const o = online;
+  if (!o) return;
+  online = null;
+  dutyRun++;
+  bots.cancel();
+  o.conn.close();
+}
+
+/**
+ * Leaves the room and goes back to the local game. In the lobby or when
+ * watching the server forgets the member; a player in a running game keeps
+ * their token and can come back with the invite link while a bot plays for
+ * them.
+ */
+function leaveOnline(tell = true) {
+  const o = online;
+  if (!o) return;
+  const playing = o.inGame && mySeat() !== null && session.state.phase !== 'over';
+  if (
+    tell &&
+    playing &&
+    !confirm('Leave the game? A bot plays for you until you come back with the room link.')
+  )
+    return;
+  if (tell) o.conn.send({ type: 'leave' });
+  if (!playing) {
+    onlineStore = forgetToken(onlineStore, o.code);
+    saveOnline(localStorage, onlineStore);
+  }
+  closeOnline();
+  setRoomUrl(null);
+  showLobby(null);
+  const saved = loadGame(localStorage);
+  seats = saved?.seats ?? ['human', 'medium', 'medium'];
+  gameOverSeen = true;
+  $('#game-over').hidden = true;
+  setSession(saved?.session ?? newSession({ players: 3 }, randomSeed()));
+  if (!saved) openSetup();
+}
+
+$('#online-button').addEventListener('click', () => showLobby(entryScreen({ error: null })));
+$('#room-chip').addEventListener('click', copyLink);
+// The turn timer counts down between room updates.
+setInterval(() => {
+  if (online?.deadline != null) renderStatus();
+}, 1000);
 
 // --- Settings ------------------------------------------------------------------
 
@@ -719,7 +1194,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (target.tagName === 'SELECT' || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (!$('#setup').hidden) return;
+  if (!$('#setup').hidden || !$('#online').hidden) return;
   const cams: Record<string, Preset> = { '1': 'overview', '2': 'table', '3': 'focus' };
   if (e.key in cams) {
     camera(cams[e.key]!);
@@ -808,7 +1283,13 @@ if (
 )
   curtain = viewer();
 snap();
-if (!saved) openSetup();
+// An invite link (or a refresh in a room) opens the room straight away.
+const roomParam = new URLSearchParams(location.search).get('room');
+const roomCode = roomParam ? normaliseCode(roomParam) : null;
+if (roomCode && server) {
+  if (onlineStore.name || onlineStore.tokens[roomCode]) connectOnline(roomCode);
+  else showLobby(entryScreen({ code: roomCode }));
+} else if (!saved) openSetup();
 
 // Lets browser tests find nodes on screen and read the game (dev server only).
 if (import.meta.env.DEV)
@@ -816,6 +1297,21 @@ if (import.meta.env.DEV)
     hrady: {
       screenPoint: (id: string) => scene.screenPoint(id),
       session: () => session,
+      online: () =>
+        online && {
+          code: online.code,
+          me: online.me,
+          seat: mySeat(),
+          room: online.room,
+          inGame: online.inGame,
+          pending: online.pending,
+          duty: online.duty && { seat: online.duty.seat, at: online.duty.at },
+          connected: online.conn.connected,
+        },
+      interactive: () => interactive(),
+      perform: (action: Action) => perform(action),
+      legal: () => legalActions(session.state, session.state.current),
+      view: () => viewFor(shown, viewer()),
       busy: () => animator.busy,
       look: (id: string) => scene.rig.go('focus', [scene.nodePoint(id)], true),
       moves: () => [...options.moves].map(([from, to]) => [from, [...to]]),

@@ -13,6 +13,8 @@
     <header class="topbar">
       <strong class="brand">Hrady</strong>
       <button id="new-game" title="Start a new game">New game</button>
+      <button id="online-button" title="Play with others over the internet">Online</button>
+      <button id="room-chip" class="room-chip" title="Copy the invite link" hidden></button>
       <span class="cams" role="group" aria-label="Camera">
         <button data-cam="overview" title="Whole board (1)">Board</button>
         <button data-cam="table" title="Table view (2)">Table</button>
@@ -95,6 +97,10 @@
           <button type="button" id="setup-cancel">Cancel</button>
         </div>
       </form>
+    </div>
+
+    <div id="online" class="modal" hidden>
+      <div id="online-dialog" class="dialog online"></div>
     </div>
 
     <div id="game-over" class="modal" hidden>

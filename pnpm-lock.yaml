@@ -66,6 +66,9 @@ importers:
       '@hrady/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@hrady/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
       three:
         specifier: ^0.186.1
         version: 0.186.1
