@@ -95,7 +95,8 @@ the "nudge the host" trigger when the next seat is a bot.
 
 ## Steps
 
-1. Protocol: types, parse, `asyncSeatProblem`, tests.
-2. Server: room mode, rules above, status route, tests.
-3. Web: create dialog, lobby, My games, wording.
-4. Docs: update `apps/server/README.md`, `README.md`, and `docs/PLAN.md`.
+1. Protocol: types, parse, `asyncSeatProblem`, tests. ✅
+2. Server: room mode, rules above, status route, tests. ✅
+3. Web: create dialog, lobby, My games, wording. ✅
+4. Docs: `apps/server/README.md`, `README.md`, `docs/PLAN.md`. ✅
+5. Notifications, then the optional per-game deadline. ⏳

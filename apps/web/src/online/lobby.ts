@@ -6,11 +6,12 @@ import {
   type BotLevel,
   type ClientMessage,
   type RoomInfo,
+  type RoomMode,
 } from '@hrady/protocol';
 import { button, h, swatch } from '../game/hud';
 import { playerName } from '../shared/describe';
 import type { ConnectionStatus } from './connection';
-import { seatName, seatOf, startProblem } from './room';
+import { seatName, seatOf, startProblem, type GameRow } from './room';
 
 /** What the online dialog shows. */
 export type LobbyScreen =
@@ -19,6 +20,9 @@ export type LobbyScreen =
       name: string;
       code: string;
       players: number;
+      mode: RoomMode;
+      /** This browser's games, `null` until they are loaded. */
+      games: GameRow[] | null;
       error: string | null;
       busy: boolean;
       /** `false` when the build has no server URL. */
@@ -28,13 +32,23 @@ export type LobbyScreen =
   | { kind: 'room'; room: RoomInfo; me: string | null; status: ConnectionStatus };
 
 export interface LobbyHandlers {
-  create(name: string, players: number): void;
+  create(name: string, players: number, mode: RoomMode): void;
+  /** Opens one of this browser's games. */
+  open(code: string): void;
   join(name: string, code: string): void;
   send(msg: ClientMessage): void;
   leave(): void;
   cancel(): void;
   copyLink(): void;
 }
+
+const MODE_NAMES: Record<RoomMode, string> = { live: 'Live', async: 'Async' };
+
+const MODE_HINTS: Record<RoomMode, string> = {
+  live: 'Everyone plays at the same time; a bot takes over for anyone idle.',
+  async:
+    'Take turns whenever you like, even days apart. Nobody is replaced; computer players play when the host opens the game.',
+};
 
 const TIMER_NAMES: Record<number, string> = { 0: 'Off', 60: '1 min', 120: '2 min', 300: '5 min' };
 
@@ -53,6 +67,37 @@ function select<T extends string | number>(
     onChange((typeof value === 'number' ? Number(raw) : raw) as T);
   };
   return el;
+}
+
+/** The "My games" list; `null` while loading, nothing at all when there are none. */
+function gamesList(games: GameRow[] | null, on: LobbyHandlers): Node[] {
+  if (games === null) return [h('p', { className: 'hint' }, 'Loading your games…')];
+  if (!games.length) return [];
+  return [
+    h('h3', {}, 'My games'),
+    h(
+      'table',
+      { className: 'seats', id: 'online-games-list' },
+      ...games.map((g) =>
+        h(
+          'tr',
+          { className: g.mine ? 'current' : '' },
+          h('td', {}, h('span', { className: 'room-code' }, g.code), ` ${MODE_NAMES[g.mode]}`),
+          h('td', {}, g.text),
+          h(
+            'td',
+            {},
+            button('Open', () => on.open(g.code), { className: g.mine ? 'primary' : '' }),
+          ),
+        ),
+      ),
+    ),
+  ];
+}
+
+/** Redraws the "My games" list in place, without touching what is typed in the dialog. */
+export function renderGames(el: HTMLElement, games: GameRow[] | null, on: LobbyHandlers) {
+  el.replaceChildren(...gamesList(games, on));
 }
 
 function entry(screen: Extract<LobbyScreen, { kind: 'entry' }>, on: LobbyHandlers): Node[] {
@@ -77,6 +122,14 @@ function entry(screen: Extract<LobbyScreen, { kind: 'entry' }>, on: LobbyHandler
     () => {},
   );
   players.id = 'online-players';
+  const mode = select(
+    'Mode',
+    (['live', 'async'] as const).map((value) => ({ value, text: MODE_NAMES[value] })),
+    screen.mode,
+    (m) => hint.replaceChildren(MODE_HINTS[m]),
+  );
+  mode.id = 'online-mode';
+  const hint = h('p', { className: 'hint', id: 'online-mode-hint' }, MODE_HINTS[screen.mode]);
   const needName = () => {
     const n = name.value.trim();
     if (!n) name.focus();
@@ -86,7 +139,7 @@ function entry(screen: Extract<LobbyScreen, { kind: 'entry' }>, on: LobbyHandler
     'Create room',
     () => {
       const n = needName();
-      if (n) on.create(n, Number(players.value));
+      if (n) on.create(n, Number(players.value), mode.value as RoomMode);
     },
     { className: 'primary', disabled: screen.busy || !screen.configured, id: 'online-create' },
   );
@@ -103,11 +156,13 @@ function entry(screen: Extract<LobbyScreen, { kind: 'entry' }>, on: LobbyHandler
   const out: Node[] = [
     h('h2', {}, 'Play online'),
     h('label', {}, 'Your name ', name),
+    h('div', { id: 'online-games' }, ...gamesList(screen.games, on)),
     h(
       'div',
       { className: 'online-choice' },
       h('h3', {}, 'New room'),
-      h('div', { className: 'row' }, 'Players ', players, create),
+      h('div', { className: 'row' }, 'Players ', players, ' Mode ', mode, create),
+      hint,
     ),
     h(
       'div',
@@ -192,14 +247,18 @@ function lobby(screen: Extract<LobbyScreen, { kind: 'room' }>, on: LobbyHandlers
       (n) => on.send({ type: 'setOptions', players: n }),
       !isHost,
     ),
-    ' Turn timer ',
-    select(
-      'Turn timer',
-      TURN_SECONDS.map((s) => ({ value: s, text: TIMER_NAMES[s] ?? `${s} s` })),
-      room.turnSeconds,
-      (s) => on.send({ type: 'setOptions', turnSeconds: s }),
-      !isHost,
-    ),
+    ...(room.mode === 'async'
+      ? [' Async game']
+      : [
+          ' Turn timer ',
+          select(
+            'Turn timer',
+            TURN_SECONDS.map((s) => ({ value: s, text: TIMER_NAMES[s] ?? `${s} s` })),
+            room.turnSeconds,
+            (s) => on.send({ type: 'setOptions', turnSeconds: s }),
+            !isHost,
+          ),
+        ]),
   );
 
   const watchers = room.members.filter((m) => m.seat === null && m.connected);
@@ -233,9 +292,11 @@ function lobby(screen: Extract<LobbyScreen, { kind: 'room' }>, on: LobbyHandlers
       isHost
         ? (problem ?? 'Everyone is seated.')
         : `Waiting for ${room.members.find((m) => m.id === room.host)?.name ?? 'the host'} to start.`,
-      room.turnSeconds
-        ? ` A bot plays for anyone idle for ${TIMER_NAMES[room.turnSeconds]} or disconnected.`
-        : ' A bot plays for anyone who disconnects.',
+      room.mode === 'async'
+        ? ' Take your turn whenever you like; the computer players play in the host’s browser when the host opens the game, so seat them right before the host.'
+        : room.turnSeconds
+          ? ` A bot plays for anyone idle for ${TIMER_NAMES[room.turnSeconds]} or disconnected.`
+          : ' A bot plays for anyone who disconnects.',
     ),
     h('div', { className: 'row' }, ...buttons),
   ];

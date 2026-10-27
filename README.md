@@ -50,6 +50,14 @@ pnpm dev:server & pnpm dev:web     # then open http://localhost:5173 in a few wi
 node apps/web/scripts/online-e2e.mjs   # a whole game in several Playwright browsers
 ```
 
+**Async games.** Choosing _Async_ when creating a room makes a game for days,
+not minutes: take your turn, close the tab, and the next human plays whenever
+they open it. Nobody is replaced by a bot, the room lives up to 14 days, and
+the computer players play in the host's browser when the host opens the game,
+so they must sit right before the host in turn order. The _Play online_
+dialog lists your games ("My games") with whose turn it is, and a local
+single-player game can be played in between. See [`docs/ASYNC.md`](docs/ASYNC.md).
+
 Deploy the server with `pnpm --filter @hrady/server run deploy` after `npx wrangler
 login` (free plan; it prints the `https://hrady.<account>.workers.dev` URL),
 then set the repository variable `HRADY_SERVER_URL` to that URL so the Pages

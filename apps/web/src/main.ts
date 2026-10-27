@@ -71,10 +71,16 @@ import {
 } from './shared/selection';
 import { act, canUndo, newSession, truncate, undo, undoTurn, type Session } from './shared/session';
 import { serverUrl, socketUrl } from './online/config';
-import { Connection, createRoom, roomExists, type ConnectionStatus } from './online/connection';
-import { renderLobby, type LobbyHandlers, type LobbyScreen } from './online/lobby';
+import {
+  Connection,
+  createRoom,
+  roomExists,
+  roomStatus,
+  type ConnectionStatus,
+} from './online/connection';
+import { renderGames, renderLobby, type LobbyHandlers, type LobbyScreen } from './online/lobby';
 import { fromSnapshot, mirror, onlineFloor, stateFromView } from './online/mirror';
-import { clockText, onlineLabels, seatOf } from './online/room';
+import { clockText, describeGame, onlineLabels, seatOf } from './online/room';
 import { forgetToken, loadOnline, rememberToken, saveOnline } from './online/store';
 
 // The 2D debug client stays reachable: index.html?debug opens it.
@@ -488,9 +494,13 @@ function renderControls() {
           ? `${who} is moving…`
           : online.pending
             ? 'Waiting for the server…'
-            : seat?.type === 'bot' || (seat?.type === 'human' && seat.away)
-              ? `${who} is thinking…`
-              : `${who} is playing.`;
+            : seat?.type === 'bot' &&
+                online.room?.mode === 'async' &&
+                online.room.host !== online.me
+              ? `${who} plays when the host opens the game.`
+              : seat?.type === 'bot' || (seat?.type === 'human' && seat.away)
+                ? `${who} is thinking…`
+                : `${who} is playing.`;
       text += watching;
     } else {
       const status = botTurn()
@@ -847,7 +857,41 @@ function showLobby(screen: LobbyScreen | null) {
   lobbyScreen = screen;
   $('#online').hidden = screen === null;
   if (screen) renderLobby($('#online-dialog'), screen, lobbyHandlers);
+  if (screen?.kind === 'entry' && screen.games === null) void loadGames();
   render();
+}
+
+let gamesRequest = 0;
+
+/**
+ * Asks the server about every room this browser holds a token for and lists
+ * them in the dialog. Rooms the server has forgotten are dropped from the
+ * store; the list is redrawn in place so typing is not interrupted.
+ */
+async function loadGames() {
+  if (!server) return;
+  const run = ++gamesRequest;
+  const base = server;
+  const results = await Promise.all(
+    Object.entries(onlineStore.tokens).map(async ([code, token]) => {
+      try {
+        return { code, status: await roomStatus(base, code, token) };
+      } catch {
+        return { code, status: undefined };
+      }
+    }),
+  );
+  if (run !== gamesRequest) return;
+  for (const { code, status } of results)
+    if (status === null) onlineStore = forgetToken(onlineStore, code);
+  saveOnline(localStorage, onlineStore);
+  const games = results
+    .flatMap(({ status }) => (status ? [describeGame(status)] : []))
+    .sort((a, b) => Number(b.mine) - Number(a.mine));
+  if (lobbyScreen?.kind !== 'entry') return;
+  lobbyScreen.games = games;
+  const el = document.getElementById('online-games');
+  if (el) renderGames(el, games, lobbyHandlers);
 }
 
 function entryScreen(change: Partial<Extract<LobbyScreen, { kind: 'entry' }>> = {}): LobbyScreen {
@@ -857,6 +901,8 @@ function entryScreen(change: Partial<Extract<LobbyScreen, { kind: 'entry' }>> = 
     name: current?.name ?? onlineStore.name,
     code: current?.code ?? '',
     players: current?.players ?? 3,
+    mode: current?.mode ?? 'live',
+    games: current?.games ?? null,
     error: null,
     busy: false,
     configured: server !== null,
@@ -870,12 +916,12 @@ function rememberName(name: string) {
 }
 
 const lobbyHandlers: LobbyHandlers = {
-  async create(name, players) {
+  async create(name, players, mode) {
     if (!server) return;
     rememberName(name);
-    showLobby(entryScreen({ name, players, busy: true }));
+    showLobby(entryScreen({ name, players, mode, busy: true }));
     try {
-      const { code, token } = await createRoom(server, name, players);
+      const { code, token } = await createRoom(server, name, players, mode);
       onlineStore = rememberToken(onlineStore, code, token);
       saveOnline(localStorage, onlineStore);
       connectOnline(code);
@@ -884,6 +930,7 @@ const lobbyHandlers: LobbyHandlers = {
         entryScreen({
           name,
           players,
+          mode,
           error: `Could not create a room: ${e instanceof Error ? e.message : String(e)}`,
         }),
       );
@@ -895,6 +942,7 @@ const lobbyHandlers: LobbyHandlers = {
     if (!code) showLobby(entryScreen({ name, code: text, error: 'That is not a room code.' }));
     else connectOnline(code);
   },
+  open: (code) => connectOnline(code),
   send: (msg) => online?.conn.send(msg),
   leave: () => leaveOnline(),
   cancel: () => showLobby(null),
@@ -1129,10 +1177,15 @@ function leaveOnline(tell = true) {
   const o = online;
   if (!o) return;
   const playing = o.inGame && mySeat() !== null && session.state.phase !== 'over';
+  const waits = o.room?.mode === 'async';
   if (
     tell &&
     playing &&
-    !confirm('Leave the game? A bot plays for you until you come back with the room link.')
+    !confirm(
+      waits
+        ? 'Leave the game? It waits for you; open it again from My games or the room link.'
+        : 'Leave the game? A bot plays for you until you come back with the room link.',
+    )
   )
     return;
   if (tell) o.conn.send({ type: 'leave' });

@@ -12,7 +12,14 @@ import type { LogEntry, RoomInfo } from '@hrady/protocol';
 import { describe, expect, it } from 'vitest';
 import { serverUrl, socketUrl } from '../src/online/config';
 import { mirror, onlineFloor, stateFromView } from '../src/online/mirror';
-import { clockText, onlineLabels, seatName, seatOf, startProblem } from '../src/online/room';
+import {
+  clockText,
+  describeGame,
+  onlineLabels,
+  seatName,
+  seatOf,
+  startProblem,
+} from '../src/online/room';
 import { forgetToken, loadOnline, rememberToken, saveOnline } from '../src/online/store';
 
 /** States of a medium-bot game on the Hrady board, every few actions. */
@@ -95,6 +102,7 @@ describe('mirror and undo floor', () => {
 describe('room helpers', () => {
   const room: RoomInfo = {
     code: 'ABCDE',
+    mode: 'live',
     phase: 'lobby',
     players: 3,
     turnSeconds: 60,
@@ -109,6 +117,7 @@ describe('room helpers', () => {
       { id: 'm2', name: 'Bea', seat: 1, connected: false },
       { id: 'm3', name: 'Cid', seat: null, connected: true },
     ],
+    turn: null,
     deadlineIn: null,
   };
 
@@ -142,6 +151,43 @@ describe('room helpers', () => {
         seats: [room.seats[0]!, room.seats[1]!, { type: 'bot', level: 'easy' }],
       }),
     ).toBeNull();
+  });
+
+  it('applies the seat-order rule to async games only', () => {
+    const bot = { type: 'bot' as const, level: 'easy' as const };
+    const [ann, bea] = [room.seats[0]!, room.seats[1]!];
+    // Host, a bot, then Bea: Bea would wait for the host to open the game.
+    const bad = { ...room, seats: [ann, bot, bea] };
+    expect(startProblem(bad)).toBeNull();
+    expect(startProblem({ ...bad, mode: 'async' })).toMatch(/right before the host/);
+    expect(startProblem({ ...bad, mode: 'async', seats: [ann, bea, bot] })).toBeNull();
+  });
+
+  it('lists a game by whose turn it is', () => {
+    const playing = (turn: number, mode: 'live' | 'async' = 'async'): RoomInfo => ({
+      ...room,
+      mode,
+      phase: 'playing',
+      turn,
+      seats: [room.seats[0]!, room.seats[1]!, { type: 'bot', level: 'easy' }],
+    });
+    expect(describeGame({ room: playing(1), me: 'm2' })).toEqual({
+      code: 'ABCDE',
+      mode: 'async',
+      text: 'Your turn',
+      mine: true,
+    });
+    expect(describeGame({ room: playing(1), me: 'm1' })).toMatchObject({
+      text: 'Waiting for Bea',
+      mine: false,
+    });
+    expect(describeGame({ room: playing(2), me: 'm1' }).text).toMatch(/open the game/);
+    expect(describeGame({ room: playing(2), me: 'm2' }).text).toMatch(/when the host opens/);
+    expect(describeGame({ room: playing(0), me: 'm3' }).text).toBe('Watching');
+    expect(describeGame({ room: { ...room, mode: 'async' }, me: 'm1' }).text).toMatch(/lobby/);
+    expect(
+      describeGame({ room: { ...playing(0), phase: 'over', turn: null }, me: 'm1' }).text,
+    ).toBe('Finished');
   });
 
   it('formats the turn clock', () => {

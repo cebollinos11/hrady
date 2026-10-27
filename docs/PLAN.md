@@ -172,6 +172,12 @@ the room logic with fake browsers and check every message for leaks, a
 Miniflare test runs the Worker, and `apps/web/scripts/online-e2e.mjs` plays a
 5-seat game in Playwright browsers against `wrangler dev`.)*
 
+### Stage 6b — Asynchronous games
+Rooms in `async` mode for turns days apart: no takeover, long-lived rooms, bots
+play in the host's browser when the host opens the game (so they sit right
+before the host in turn order), a "My games" list. Notifications are not
+included yet. Plan and rules: [`ASYNC.md`](ASYNC.md).
+
 ### Stage 7 — Polish
 Sounds, animations for battles/reveals, tutorial/rules overlay, i18n
 accessibility (colour-blind-safe player colours + patterns),

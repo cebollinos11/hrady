@@ -1,4 +1,11 @@
-import { PING, PONG, type ClientMessage, type ServerMessage } from '@hrady/protocol';
+import {
+  PING,
+  PONG,
+  type ClientMessage,
+  type RoomMode,
+  type RoomStatus,
+  type ServerMessage,
+} from '@hrady/protocol';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'gone';
 
@@ -127,11 +134,12 @@ export async function createRoom(
   base: string,
   name: string,
   players: number,
+  mode: RoomMode = 'live',
 ): Promise<{ code: string; token: string }> {
   const res = await fetch(`${base}/api/rooms`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, players }),
+    body: JSON.stringify({ name, players, mode }),
   });
   const body = (await res.json().catch(() => ({}))) as {
     code?: string;
@@ -149,4 +157,23 @@ export async function roomExists(base: string, code: string): Promise<boolean> {
   if (res.status === 404) return false;
   if (!res.ok) throw new Error(`the server answered ${res.status}`);
   return true;
+}
+
+/**
+ * `POST /api/rooms/:code/status`: the room as seen by the holder of `token`,
+ * or `null` if the room no longer exists. Throws on network errors.
+ */
+export async function roomStatus(
+  base: string,
+  code: string,
+  token: string,
+): Promise<RoomStatus | null> {
+  const res = await fetch(`${base}/api/rooms/${encodeURIComponent(code)}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`the server answered ${res.status}`);
+  return (await res.json()) as RoomStatus;
 }

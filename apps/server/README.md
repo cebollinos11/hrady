@@ -9,12 +9,13 @@ pnpm dev:server                          # wrangler dev on http://localhost:8787
 pnpm --filter @hrady/server run deploy       # after `npx wrangler login`
 ```
 
-| Route                  | What                                                                    |
-| ---------------------- | ----------------------------------------------------------------------- |
-| `POST /api/rooms`      | `{ name, players }` → `201 { code, token }`; the creator holds seat 0   |
-| `GET /api/rooms/:code` | the room's public `RoomInfo` (lobby, seats, members), or 404            |
-| `GET /ws/:code`        | WebSocket upgrade; messages are JSON text frames, see `@hrady/protocol` |
-| `OPTIONS *`            | CORS preflight                                                          |
+| Route                          | What                                                                    |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| `POST /api/rooms`              | `{ name, players }` → `201 { code, token }`; the creator holds seat 0   |
+| `GET /api/rooms/:code`         | the room's public `RoomInfo` (lobby, seats, members), or 404            |
+| `POST /api/rooms/:code/status` | `{ token }` → `{ room, me }`: the room and which member the token is    |
+| `GET /ws/:code`                | WebSocket upgrade; messages are JSON text frames, see `@hrady/protocol` |
+| `OPTIONS *`                    | CORS preflight                                                          |
 
 Codes are 5 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (case-insensitive).
 `ALLOWED_ORIGINS` (in `wrangler.toml`) is `*` or a comma-separated list of
@@ -150,6 +151,24 @@ the state from the undo floor and sends everyone `undone { length, view }`.
 running game after 30 (time to come back), a finished game 30 minutes after
 its end (5 once everyone left), and any room after 6 hours without a message.
 The object then closes its sockets and deletes its storage and alarm.
+
+## Async rooms
+
+`POST /api/rooms` takes `mode: 'live' | 'async'` (default `live`). An async room
+is for turns hours or days apart (design: [`docs/ASYNC.md`](../../docs/ASYNC.md)):
+
+- no turn timer, no disconnect grace, nobody is marked away: the server waits;
+- the creator stays the host for good and the bot duty is never handed to
+  anyone else or timed out: it waits until the host's browser connects;
+- `start` requires the host to hold a seat and every bot to be followed by
+  another bot or the host (`asyncSeatProblem` in `@hrady/protocol`), so a human
+  never waits for a host who is away;
+- expiry: 14 days without a message for a running game (never for "nobody
+  connected"), 2 days for an empty lobby, 7 days after a game ends.
+
+`POST /api/rooms/:code/status` lets a client list its games without opening a
+socket: it sends a stored token and gets the `RoomInfo` (with `mode` and
+`turn`, the seat to move) and its member id.
 
 ## Design decisions
 
