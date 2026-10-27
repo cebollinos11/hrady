@@ -3,7 +3,6 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PLAYER_COLOURS } from '../shared/describe';
 import { FACE_VALUES } from './dice';
 import type { FigureSize } from './figures';
-import { THEME } from './theme';
 
 /**
  * Low-poly models of the board pieces, built from three.js primitives. Every
@@ -22,37 +21,30 @@ const playerMaterials = new Map<string, THREE.MeshStandardMaterial>();
 export function playerMaterial(p: number | null): THREE.MeshStandardMaterial {
   const colour = playerColour(p);
   let m = playerMaterials.get(colour);
-  if (!m)
-    playerMaterials.set(
-      colour,
-      (m = flat(colour, {
-        roughness: 0.6,
-        emissive: p === null ? 0x000000 : colour,
-        emissiveIntensity: THEME.glow,
-      })),
-    );
+  if (!m) playerMaterials.set(colour, (m = flat(colour, { roughness: 0.6 })));
   return m;
 }
 
 export const MATERIALS = {
   metal: flat('#c9ccd2', { metalness: 0.35, roughness: 0.45 }),
-  wood: flat(THEME.wood),
-  stone: flat(THEME.stone),
-  darkStone: flat(THEME.darkStone),
-  rock: flat(THEME.rock),
+  wood: flat('#7a5230'),
+  stone: flat('#cfc3ad'),
+  darkStone: flat('#9d917c'),
+  rock: flat('#7f776a'),
   /** Neutral castle roofs: slate, so they never read as a player's colour. */
-  roof: flat(THEME.roof),
+  roof: flat('#5f6670'),
   /** The red of the coats of arms painted on the start scrolls. */
   crest: flat('#a5442e'),
-  gold: flat(THEME.coinFace, { metalness: 0.4, roughness: 0.4 }),
-  coinRim: flat(THEME.coinRim, { metalness: 0.3, roughness: 0.5 }),
-  parchment: flat(THEME.parchment),
-  dot: flat(THEME.dot, { roughness: 1 }),
-  base: flat(THEME.base ?? '#000000', { roughness: 0.9 }),
+  gold: flat('#e2b33c', { metalness: 0.4, roughness: 0.4 }),
+  coinRim: flat('#b9862a', { metalness: 0.3, roughness: 0.5 }),
+  parchment: flat('#efe2c0'),
+  /** Path dots and entrance arrows: unlit, so shading never dims them into the ground. */
+  dot: new THREE.MeshBasicMaterial({ color: '#fffaf0' }),
+  dotEdge: new THREE.MeshBasicMaterial({ color: '#3b2a1a' }),
   water: new THREE.MeshStandardMaterial({
-    color: THEME.water,
+    color: '#4f8fc0',
     transparent: true,
-    opacity: THEME.waterOpacity,
+    opacity: 0.78,
     roughness: 0.25,
     metalness: 0.1,
   }),
@@ -135,7 +127,8 @@ export function knightFigure(size: FigureSize, player: number): THREE.Group {
 
 const coinGeometry = new THREE.CylinderGeometry(0.25, 0.27, 0.06, 14);
 const coinFaceGeometry = new THREE.CylinderGeometry(0.19, 0.19, 0.065, 14);
-const dotGeometry = new THREE.CylinderGeometry(0.028, 0.028, 0.02, 6);
+const dotGeometry = new THREE.CylinderGeometry(0.04, 0.04, 0.02, 10);
+const dotEdgeGeometry = new THREE.CylinderGeometry(0.052, 0.052, 0.012, 10);
 
 /** A path marker: a gold coin with a raised face. */
 export function marker(): THREE.Group {
@@ -151,10 +144,12 @@ export function marker(): THREE.Group {
   return g;
 }
 
+/** A path dot: a cream disc with a dark edge, so it reads on grass, sand and water. */
 export function dot(): THREE.Mesh {
   const m = new THREE.Mesh(dotGeometry, MATERIALS.dot);
-  m.scale.set(THEME.dotScale, 1, THEME.dotScale);
-  m.receiveShadow = true;
+  const edge = new THREE.Mesh(dotEdgeGeometry, MATERIALS.dotEdge);
+  edge.position.y = -0.006;
+  m.add(edge);
   return m;
 }
 
@@ -172,7 +167,6 @@ export function entranceArrow(): THREE.Mesh {
   // ShapeGeometry points along −z after the rotation; turn it to +z.
   g.rotateY(Math.PI);
   const m = new THREE.Mesh(g, MATERIALS.dot);
-  m.scale.setScalar(THEME.dotScale);
   return m;
 }
 

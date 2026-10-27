@@ -6,7 +6,6 @@ import {
   type Layout,
   type Point,
 } from './layout';
-import { THEME } from './theme';
 
 /**
  * Procedural low-poly terrain: rolling hills that flatten out around every
@@ -87,11 +86,10 @@ export function heightAt(layout: Layout, p: Point): number {
 
 /** Ground colour (r, g, b in 0..1) for a height and a slope (0 flat .. 1 steep). */
 export function groundColour(h: number, slope: number): [number, number, number] {
-  const g = THEME.ground;
-  if (h < WATER_Y + 0.01) return g.bed; // sandy bed under the water
-  if (h < GROUND_Y + 0.03 && slope < 0.3) return g.meadow;
-  if (h > 0.42) return g.rock; // rocky tops
-  if (slope > 0.55) return g.steep; // steep earth
+  if (h < WATER_Y + 0.01) return [0.78, 0.72, 0.52]; // sandy bed under the water
+  if (h < GROUND_Y + 0.03 && slope < 0.3) return [0.42, 0.62, 0.27]; // meadow
+  if (h > 0.42) return [0.55, 0.52, 0.46]; // rocky tops
+  if (slope > 0.55) return [0.46, 0.4, 0.3]; // steep earth
   const t = Math.min(1, h / 0.42);
-  return [0, 1, 2].map((i) => g.low[i]! + (g.high[i]! - g.low[i]!) * t) as [number, number, number];
+  return [0.36 - 0.08 * t, 0.56 - 0.12 * t, 0.24 - 0.04 * t];
 }
