@@ -281,13 +281,15 @@ export class GraphScene implements BoardView {
     const slot = Math.max(0, present.indexOf(player)) - (present.length - 1) / 2;
     if (type === 'path') return { x: x + slot * 17 * G, z };
     if (type === 'start') return { x: x + slot * 16 * G, z: z + 7 * G };
-    return { x: x + slot * 20 * G, z: z + 33 * G };
+    // Inside the castle's walls, so it shows at a glance who is in.
+    return { x: x + slot * (present.length > 2 ? 11 : 15) * G, z: z + 3 * G };
   }
 
   private stackRadius(id: string, players: number) {
     const type = this.node(id).type;
     if (type === 'start') return 7 * G;
-    return (players > 1 ? 8 : type === 'castle' ? 10 : 11) * G;
+    if (type === 'castle') return (players > 2 ? 5.5 : players > 1 ? 7 : 9) * G;
+    return (players > 1 ? 8 : 11) * G;
   }
 
   // --- State ------------------------------------------------------------------------
@@ -710,13 +712,15 @@ export class GraphScene implements BoardView {
     r: number,
     p: PlayerId,
     count: number,
+    /** Standing in a castle, where a light rim keeps it apart from the walls. */
+    inside = false,
   ) {
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = colourOf(p);
     ctx.fill();
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = '#000a';
+    ctx.lineWidth = inside ? 1.5 : 1;
+    ctx.strokeStyle = inside ? '#fffe' : '#000a';
     ctx.stroke();
     this.text(ctx, String(count), x, y + 0.5, r * 1.2);
   }
@@ -745,10 +749,11 @@ export class GraphScene implements BoardView {
     if (!counts) return;
     const present = counts.filter((c) => c > 0).length;
     const r = this.stackRadius(id, present);
+    const inside = this.node(id).type === 'castle';
     counts.forEach((c, p) => {
       if (!c) return;
       const at = this.standPoint(id, p);
-      this.disc(ctx, at.x, at.z - (this.lifts.get(`${id}:${p}`) ?? 0), r, p, c);
+      this.disc(ctx, at.x, at.z - (this.lifts.get(`${id}:${p}`) ?? 0), r, p, c, inside);
     });
   }
 
