@@ -7,10 +7,10 @@ describe('marksFor', () => {
   const state = scenario({ knights: { a: { 0: 3 }, f: { 0: 1 }, b: { 1: 2 } } });
   const options = optionsFor(state);
 
-  it('marks every stack that can act and every enemy marker in reach', () => {
+  it('marks every stack that can act, and no enemy markers until one is selected', () => {
     const marks = marksFor(NONE, options);
     expect([...marks.selectable].sort()).toEqual(['a', 'f']);
-    expect([...marks.fields]).toEqual(['b']);
+    expect(marks.fields.size).toBe(0);
     expect(marks.selected).toBeNull();
   });
 
