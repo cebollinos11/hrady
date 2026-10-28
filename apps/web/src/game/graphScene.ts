@@ -19,7 +19,11 @@ const GROUND = '#5d7f4e';
 const NEUTRAL = '#b7ab95';
 const INK = '#2b2a26';
 /** Board units kept free round the nodes when fitting the view. */
-const MARGIN = 50;
+const MARGIN = 70;
+/** How much bigger nodes, castles and stacks are drawn than the board's own proportions. */
+const G = 1.6;
+/** Largest side of the cached board layer, in device pixels. */
+const MAX_LAYER = 4096;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 4;
 /** How long a walk of one typical step (the length of an edge) takes its nominal duration. */
@@ -275,15 +279,15 @@ export class GraphScene implements BoardView {
     const type = this.node(id).type;
     const present = (knights[id] ?? []).flatMap((c, p) => (c > 0 || p === player ? [p] : []));
     const slot = Math.max(0, present.indexOf(player)) - (present.length - 1) / 2;
-    if (type === 'path') return { x: x + slot * 17, z };
-    if (type === 'start') return { x: x + slot * 16, z: z + 7 };
-    return { x: x + slot * 20, z: z + 33 };
+    if (type === 'path') return { x: x + slot * 17 * G, z };
+    if (type === 'start') return { x: x + slot * 16 * G, z: z + 7 * G };
+    return { x: x + slot * 20 * G, z: z + 33 * G };
   }
 
   private stackRadius(id: string, players: number) {
     const type = this.node(id).type;
-    if (type === 'start') return 7;
-    return players > 1 ? 8 : type === 'castle' ? 10 : 11;
+    if (type === 'start') return 7 * G;
+    return (players > 1 ? 8 : type === 'castle' ? 10 : 11) * G;
   }
 
   // --- State ------------------------------------------------------------------------
@@ -335,7 +339,11 @@ export class GraphScene implements BoardView {
     for (const n of this.board.data.nodes) {
       const a = this.nodePoint(n.id);
       const [hw, up, down] =
-        n.type === 'castle' ? [22, 22, 40] : n.type === 'start' ? [26, 20, 20] : [18, 18, 18];
+        n.type === 'castle'
+          ? [22 * G, 22 * G, 40 * G]
+          : n.type === 'start'
+            ? [26 * G, 20 * G, 20 * G]
+            : [18 * G, 18 * G, 18 * G];
       const [dx, dy] = [p.x - a.x, p.z - a.z];
       if (Math.abs(dx) > hw * grow || dy < -up * grow || dy > down * grow) continue;
       const score = Math.hypot(dx, dy - (n.type === 'castle' ? 10 : 0));
@@ -348,7 +356,7 @@ export class GraphScene implements BoardView {
     const a = this.nodePoint(id);
     const rect = this.canvas.getBoundingClientRect();
     const { zoom, x, y } = this.frame;
-    const lift = this.node(id).type === 'castle' ? 26 : 14;
+    const lift = (this.node(id).type === 'castle' ? 26 : 14) * G;
     return {
       x: rect.left + rect.width / 2 + (a.x - x) * zoom,
       y: rect.top + rect.height / 2 + (a.z - lift - y) * zoom,
@@ -523,6 +531,49 @@ export class GraphScene implements BoardView {
     this.paint();
   }
 
+  /** Runs `draw` with everything scaled by `G` about a point: how nodes and what sits on them grow. */
+  private grown(ctx: CanvasRenderingContext2D, at: Point, draw: () => void) {
+    ctx.save();
+    ctx.translate(at.x, at.z);
+    ctx.scale(G, G);
+    ctx.translate(-at.x, -at.z);
+    draw();
+    ctx.restore();
+  }
+
+  /**
+   * Edges, nodes and castle names never change between two game moves, so they
+   * are drawn once into a bitmap that panning only moves. It is drawn again when
+   * a castle changes hands, the names are toggled or the zoom has left the
+   * resolution it was drawn at.
+   */
+  private layer: { canvas: HTMLCanvasElement; scale: number; key: string } | null = null;
+
+  private boardLayer() {
+    const b = this.bounds;
+    const [w, h] = [b.x1 - b.x0, b.y1 - b.y0];
+    const limit = MAX_LAYER / Math.max(w, h);
+    const want = Math.min(limit, this.frame.zoom * dpr());
+    const key = `${this.labels}|${Object.entries(this.castles)
+      .map(([id, c]) => `${id}${c.owner}`)
+      .join()}`;
+    const l = this.layer;
+    if (l && l.key === key && want >= l.scale * 0.7 && (want <= l.scale * 1.5 || l.scale >= limit))
+      return l;
+    const canvas = l?.canvas ?? document.createElement('canvas');
+    canvas.width = Math.ceil(w * want);
+    canvas.height = Math.ceil(h * want);
+    const ctx = canvas.getContext('2d')!;
+    ctx.setTransform(want, 0, 0, want, -b.x0 * want, -b.y0 * want);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    this.paintEdges(ctx);
+    for (const n of this.board.data.nodes)
+      this.grown(ctx, this.nodePoint(n.id), () => this.paintNode(ctx, n));
+    if (this.labels) this.paintLabels(ctx);
+    return (this.layer = { canvas, scale: want, key });
+  }
+
   private paint() {
     const ctx = this.ctx;
     const k = dpr();
@@ -542,13 +593,12 @@ export class GraphScene implements BoardView {
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
-    this.paintEdges(ctx);
+    const b = this.bounds;
+    ctx.drawImage(this.boardLayer().canvas, b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
     this.paintMarks(ctx);
-    for (const n of this.board.data.nodes) this.paintNode(ctx, n);
     for (const n of this.board.data.nodes) this.paintStacks(ctx, n.id);
     if (this.trailsVisible) for (const t of this.trails) this.paintTrail(ctx, t);
     this.paintShields(ctx);
-    if (this.labels) this.paintLabels(ctx);
     this.paintCosts(ctx);
     if (this.ghost) this.paintGhost(ctx, this.ghost.id, this.ghost.player);
     for (const e of this.effects) this.paintEffect(ctx, e);
@@ -585,10 +635,12 @@ export class GraphScene implements BoardView {
     const m = this.marks;
     const mark = (id: string, colour: string, width = 3, pulse = false, grow = 0) => {
       if (!this.has(id)) return;
-      this.ringPath(ctx, id, grow + (pulse ? blink * 1.5 : 0));
-      ctx.strokeStyle = colour;
-      ctx.lineWidth = width;
-      ctx.stroke();
+      this.grown(ctx, this.nodePoint(id), () => {
+        this.ringPath(ctx, id, grow + (pulse ? blink * 1.5 : 0));
+        ctx.strokeStyle = colour;
+        ctx.lineWidth = width;
+        ctx.stroke();
+      });
     };
     for (const id of m.selectable) if (id !== m.selected) mark(id, HIGHLIGHT.selectable, 2, true);
     if (m.selected) mark(m.selected, HIGHLIGHT.selected, 4, false, 2);
@@ -744,13 +796,16 @@ export class GraphScene implements BoardView {
     for (const [id, view] of Object.entries(this.castles)) {
       if (!view.shield || view.owner === null || !this.has(id) || revealing.has(id)) continue;
       const { x, z } = this.nodePoint(id);
-      this.shieldBadge(
-        ctx,
-        x + 19,
-        z - 12,
-        colourOf(view.owner),
-        this.shieldText(view),
-        view.shield.revealed,
+      const shield = view.shield;
+      this.grown(ctx, { x, z }, () =>
+        this.shieldBadge(
+          ctx,
+          x + 19,
+          z - 12,
+          colourOf(view.owner),
+          this.shieldText(view),
+          shield.revealed,
+        ),
       );
     }
   }
@@ -758,7 +813,7 @@ export class GraphScene implements BoardView {
   private paintLabels(ctx: CanvasRenderingContext2D) {
     for (const n of this.board.data.nodes) {
       if (n.type !== 'castle') continue;
-      this.text(ctx, n.name, n.x * this.size.width, n.y * this.size.height - 24, 11);
+      this.text(ctx, n.name, n.x * this.size.width, n.y * this.size.height - 24 * G, 11 * G);
     }
   }
 
@@ -769,14 +824,16 @@ export class GraphScene implements BoardView {
       const colour = this.marks.castles.has(id) ? HIGHLIGHT.castle : HIGHLIGHT.move;
       const { x, z } = this.nodePoint(id);
       const [bx, by] = this.node(id).type === 'castle' ? [x + 22, z + 8] : [x + 15, z + 10];
-      ctx.beginPath();
-      ctx.arc(bx, by, 8, 0, Math.PI * 2);
-      ctx.fillStyle = INK;
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = colour;
-      ctx.stroke();
-      this.text(ctx, String(cost), bx, by + 0.5, 10);
+      this.grown(ctx, { x, z }, () => {
+        ctx.beginPath();
+        ctx.arc(bx, by, 8, 0, Math.PI * 2);
+        ctx.fillStyle = INK;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = colour;
+        ctx.stroke();
+        this.text(ctx, String(cost), bx, by + 0.5, 10);
+      });
     }
   }
 
@@ -787,6 +844,15 @@ export class GraphScene implements BoardView {
     refused: number | null = null,
   ) {
     const a = this.standPoint(id, player);
+    this.grown(ctx, a, () => this.ghostAt(ctx, a, player, refused));
+  }
+
+  private ghostAt(
+    ctx: CanvasRenderingContext2D,
+    a: Point,
+    player: PlayerId,
+    refused: number | null,
+  ) {
     const waiting = refused === null;
     const bob = waiting ? Math.sin(this.now / 260) * 2 : 0;
     ctx.save();
@@ -843,11 +909,18 @@ export class GraphScene implements BoardView {
 
   private paintEffect(ctx: CanvasRenderingContext2D, e: Effect) {
     if (e.kind === 'walk') {
-      this.disc(ctx, e.x, e.y - e.hop, 11, e.player, e.count);
+      this.disc(ctx, e.x, e.y - e.hop, 11 * G, e.player, e.count);
       return;
     }
     if (e.kind === 'fall') return this.paintFall(ctx, e);
     const a = this.nodePoint(e.id);
+    if (e.kind === 'reject') return this.paintGhost(ctx, e.id, e.player, e.t);
+    this.grown(ctx, a, () => this.paintNodeEffect(ctx, e, a));
+  }
+
+  /** An effect drawn in the node's own proportions, scaled up with it. */
+  private paintNodeEffect(ctx: CanvasRenderingContext2D, e: Effect, a: Point) {
+    if (e.kind === 'walk' || e.kind === 'fall' || e.kind === 'reject') return;
     const big = this.node(e.id).type === 'castle';
     if (e.kind === 'ring') {
       const r = (big ? 30 : 16) + e.t * 30;
@@ -860,8 +933,6 @@ export class GraphScene implements BoardView {
     } else if (e.kind === 'pulse') {
       const beat = (e.t * 2) % 1;
       if (e.t < 1) this.circle(ctx, a.x, a.z, 24 + beat * 14, beat < 0.7 ? e.colour : '#ffffff', 3);
-    } else if (e.kind === 'reject') {
-      this.paintGhost(ctx, e.id, e.player, e.t);
     } else if (e.kind === 'dust') {
       this.paintBurst(ctx, a, e.t, e.big ? 28 : 18, e.big ? 12 : 8, [e.colour, '#d8cfb8']);
     } else if (e.kind === 'sparks') {
@@ -920,7 +991,7 @@ export class GraphScene implements BoardView {
   private paintFall(ctx: CanvasRenderingContext2D, e: Extract<Effect, { kind: 'fall' }>) {
     ctx.save();
     ctx.globalAlpha = Math.max(0, 1 - e.t) * (Math.floor(this.now / 70) % 2 ? 0.6 : 1);
-    this.disc(ctx, e.x, e.y + e.t * 8, 11, e.player, e.count);
+    this.disc(ctx, e.x, e.y + e.t * 8 * G, 11 * G, e.player, e.count);
     ctx.restore();
   }
 
