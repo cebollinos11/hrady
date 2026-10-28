@@ -6,6 +6,7 @@ export const GAME_KEY = 'hrady-game';
 export const SETTINGS_KEY = 'hrady-settings';
 
 export type Speed = 'slow' | 'normal' | 'fast';
+export type View = 'pixel' | 'graph';
 export type Animations = 'normal' | 'fast' | 'off';
 
 export interface Settings {
@@ -17,6 +18,8 @@ export interface Settings {
   labels: boolean;
   /** Arrows for what the other players did since your last turn. */
   trails: boolean;
+  /** How the board is drawn: top-down pixel art or the plain graph. */
+  view: View;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -25,6 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
   passScreen: true,
   labels: true,
   trails: true,
+  view: 'pixel',
 };
 
 export const BOT_DELAY: Record<Speed, number> = { slow: 1400, normal: 650, fast: 150 };
@@ -56,6 +60,7 @@ export function loadSettings(store: Store): Settings {
     passScreen: pick(s.passScreen, [true, false], DEFAULT_SETTINGS.passScreen),
     labels: pick(s.labels, [true, false], DEFAULT_SETTINGS.labels),
     trails: pick(s.trails, [true, false], DEFAULT_SETTINGS.trails),
+    view: pick(s.view, ['pixel', 'graph'], DEFAULT_SETTINGS.view),
   };
 }
 

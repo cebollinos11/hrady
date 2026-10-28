@@ -41,12 +41,13 @@ import {
   saveGame,
   type Settings,
 } from './game/saved';
+import { GraphScene } from './game/graphScene';
 import { PixelScene } from './game/pixelScene';
 import { TOP_LOOK } from './game/topLook';
 import { sinceLastTurn, summary, trailsOf } from './game/recent';
 import { planSteps } from './game/steps';
 import { demoStages, midGameState } from './dev/demo';
-import type { Preset } from './game/boardView';
+import type { BoardView, Preset } from './game/boardView';
 import type { Point } from './game/layout';
 import { BotClient } from './shared/botClient';
 import { logLines, placeName, playerName } from './shared/describe';
@@ -154,7 +155,16 @@ await new Promise((r) => {
   requestAnimationFrame(() => setTimeout(r));
   setTimeout(r, 100);
 });
-const scene = new PixelScene($<HTMLCanvasElement>('#top'), board(), undefined, TOP_LOOK);
+const pixelScene = new PixelScene($<HTMLCanvasElement>('#top'), board(), undefined, TOP_LOOK);
+const graphScene = new GraphScene($<HTMLCanvasElement>('#top'), board());
+// The two views share the canvas; every call goes to the one showing.
+let active: BoardView = pixelScene;
+const scene = new Proxy({} as BoardView, {
+  get(_, key) {
+    const value = Reflect.get(active, key);
+    return typeof value === 'function' ? value.bind(active) : value;
+  },
+});
 const die = new DieView($<HTMLCanvasElement>('#die'));
 const animator = new Animator(scene, die);
 animator.onIdle = () => render();
@@ -1326,11 +1336,31 @@ function applySettings() {
   animator.speed = ANIMATION_SPEED[settings.animations];
   scene.setLabels(settings.labels);
   scene.setTrailsVisible(settings.trails);
+  useView(settings.view);
+  $<HTMLInputElement>('#graph-view').checked = settings.view === 'graph';
   $<HTMLSelectElement>('#bot-speed').value = settings.botSpeed;
   $<HTMLSelectElement>('#animations').value = settings.animations;
   $<HTMLInputElement>('#pass-screen').checked = settings.passScreen;
   $<HTMLInputElement>('#labels').checked = settings.labels;
   $<HTMLInputElement>('#trails').checked = settings.trails;
+}
+
+/** Puts the pixel-art or the graph view on the canvas and redraws the game on it. */
+function useView(view: Settings['view']) {
+  const next = view === 'graph' ? graphScene : pixelScene;
+  if (next === active) return;
+  active.finishTweens();
+  next.rig.insetTop = active.rig.insetTop;
+  active = next;
+  pixelScene.enabled = next === pixelScene;
+  graphScene.enabled = next === graphScene;
+  scene.setLabels(settings.labels);
+  scene.setTrailsVisible(settings.trails);
+  trailsShown = '';
+  sized = '';
+  layout();
+  scene.rig.go('overview', [], true);
+  snap();
 }
 
 function updateSettings(change: Partial<Settings>) {
@@ -1354,6 +1384,9 @@ $<HTMLSelectElement>('#animations').addEventListener('change', (e) =>
 );
 $<HTMLInputElement>('#pass-screen').addEventListener('change', (e) =>
   updateSettings({ passScreen: (e.target as HTMLInputElement).checked }),
+);
+$<HTMLInputElement>('#graph-view').addEventListener('change', (e) =>
+  updateSettings({ view: (e.target as HTMLInputElement).checked ? 'graph' : 'pixel' }),
 );
 $<HTMLInputElement>('#labels').addEventListener('change', (e) =>
   updateSettings({ labels: (e.target as HTMLInputElement).checked }),
@@ -1456,6 +1489,10 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.key === 'i') {
     toggleInfo();
+    return;
+  }
+  if (e.key === 'g') {
+    updateSettings({ view: settings.view === 'graph' ? 'pixel' : 'graph' });
     return;
   }
   if (e.key === 'l') {

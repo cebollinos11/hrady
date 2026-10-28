@@ -1,7 +1,7 @@
 import type { Board } from '@hrady/board';
 import type { CastleView, PlayerId } from '@hrady/engine';
 import type { Marks } from '../shared/marks';
-import { NO_MARKS } from '../shared/marks';
+import { HIGHLIGHT, NO_MARKS } from '../shared/marks';
 import { PLAYER_COLOURS } from '../shared/describe';
 import type { BoardView, Preset, ViewRig } from './boardView';
 import { arrange, compose, startSlots, type FigureSize } from './figures';
@@ -50,16 +50,6 @@ const zoomSteps = () => [...new Set(ZOOMS.map((z) => snap(z)))];
 /** Most figures drawn for one stack, however many knights it holds. */
 const MAX_FIGURES = 3;
 const NEUTRAL = '#efe9dc';
-
-const HIGHLIGHT = {
-  selectable: '#ffffff',
-  selected: '#fff27a',
-  move: '#4ee06a',
-  castle: '#ff9a2e',
-  field: '#ff4b3e',
-  source: '#5aa8ff',
-  shield: '#ffd34a',
-};
 
 const colourOf = (p: number | null) => (p === null ? NEUTRAL : (PLAYER_COLOURS[p] ?? '#777777'));
 
@@ -171,6 +161,8 @@ interface Drawable {
 
 export class PixelScene implements BoardView {
   readonly rig: PixelRig;
+  /** Off while another view draws on the canvas: pan and zoom are then not this view's. */
+  enabled = true;
   private readonly ctx: Ctx;
   /**
    * The board's layout and ground. Laying out is slow, so an adaptive scene waits
@@ -321,13 +313,14 @@ export class PixelScene implements BoardView {
     const pointers = new Map<number, { x: number; y: number }>();
     let pinch = 0;
     c.addEventListener('pointerdown', (e) => {
+      if (!this.enabled) return;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       c.setPointerCapture(e.pointerId);
       pinch = 0;
     });
     c.addEventListener('pointermove', (e) => {
       const last = pointers.get(e.pointerId);
-      if (!last) return;
+      if (!this.enabled || !last) return;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 1) {
         if (Math.hypot(e.clientX - last.x, e.clientY - last.y) === 0) return;
@@ -358,6 +351,7 @@ export class PixelScene implements BoardView {
       'wheel',
       (e) => {
         e.preventDefault();
+        if (!this.enabled) return;
         wheel += e.deltaY;
         if (Math.abs(wheel) < 40 || e.timeStamp - last < 120) return;
         this.stepZoom(wheel < 0 ? 1 : -1, { x: e.clientX, y: e.clientY });

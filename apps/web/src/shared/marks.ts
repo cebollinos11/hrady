@@ -1,5 +1,16 @@
 import { targetsFor, type Options, type Selection } from './selection';
 
+/** Highlight colours of the board renderers. */
+export const HIGHLIGHT = {
+  selectable: '#ffffff',
+  selected: '#fff27a',
+  move: '#4ee06a',
+  castle: '#ff9a2e',
+  field: '#ff4b3e',
+  source: '#5aa8ff',
+  shield: '#ffd34a',
+};
+
 /** How each node is highlighted for the current selection. */
 export interface Marks {
   /** Own stacks that can do something. */
